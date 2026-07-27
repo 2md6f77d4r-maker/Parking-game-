@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Parking Manager Pro</title>
+<title>Parking Manager Pro V3</title>
 <style>
 :root{
   --bg:#0d151c;--panel:#17232d;--panel2:#1d2c37;--line:#314553;
@@ -132,6 +133,37 @@ main{padding:14px;min-width:0}
 .keyboard-help kbd{background:#0a1116;border:1px solid #425966;border-radius:5px;padding:3px 6px}
 @media(max-width:1000px){.management-grid{grid-template-columns:1fr}.camera-grid{grid-template-columns:1fr}}
 
+/* --- CAISSE V3 --- */
+.cash-workspace{display:grid;grid-template-columns:280px minmax(420px,1fr) 320px;gap:12px}
+.cash-vehicle-list{display:grid;gap:7px;max-height:520px;overflow:auto}
+.cash-vehicle{
+  width:100%;text-align:left;background:#101b23;color:var(--text);border:1px solid #2b414e;
+  padding:10px;border-radius:11px;display:grid;grid-template-columns:1fr auto;gap:5px
+}
+.cash-vehicle:hover{border-color:#5c7a89}.cash-vehicle.active{border-color:var(--mint);box-shadow:0 0 0 1px var(--mint) inset}
+.cash-vehicle small{color:var(--muted)}.cash-vehicle .amount{font-weight:800;color:var(--mint)}
+.cash-screen{background:#071016;border:1px solid #34505e;border-radius:16px;padding:16px;min-height:310px}
+.cash-screen-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px dashed #35505d}
+.cash-screen .big-plate{font-family:ui-monospace,monospace;font-size:24px;font-weight:900;letter-spacing:.08em}
+.cash-breakdown{display:grid;gap:7px;margin-top:14px}.cash-breakdown .cash-line{padding:3px 0}
+.cash-balance{margin-top:13px;padding-top:13px;border-top:1px dashed #35505d;display:flex;justify-content:space-between;align-items:end}
+.cash-balance span{color:var(--muted)}.cash-balance strong{font-size:30px;color:var(--mint)}
+.payment-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.payment-grid button{min-height:48px}.register-state{padding:5px 9px;border-radius:999px;background:#4b2020;color:#ffabab;font-size:11px}
+.register-state.open{background:#173d29;color:#8ef0ad}
+.cash-filters{display:grid;grid-template-columns:1fr 180px 170px;gap:8px}
+.transaction-row{cursor:pointer}.transaction-row:hover td{background:#1d2d37}.transaction-row.selected td{background:#203d3a}
+.route-status{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}
+.route-status:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 9px var(--green)}
+.route-layer{z-index:5}.moving-vehicle{z-index:8;will-change:transform;transition:none}
+.moving-vehicle.bus-route{width:58px;height:27px;border-radius:6px}
+.moving-vehicle .route-plate{position:absolute;left:50%;top:-14px;transform:translateX(-50%);white-space:nowrap;background:#071016;color:#fff;border:1px solid #405867;border-radius:5px;padding:2px 4px;font-size:8px}
+.route-trail{position:absolute;height:3px;background:linear-gradient(90deg,transparent,var(--mint),transparent);opacity:.38;border-radius:999px;transform-origin:left center;z-index:3}
+.space.arriving{animation:spacePulse 1s ease-in-out infinite}
+@keyframes spacePulse{50%{box-shadow:0 0 0 4px rgba(120,224,193,.18);border-color:var(--mint)}}
+@media(max-width:1250px){.cash-workspace{grid-template-columns:250px 1fr}.cash-sidebar{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+@media(max-width:800px){.cash-workspace{grid-template-columns:1fr}.cash-sidebar{grid-template-columns:1fr}.cash-filters{grid-template-columns:1fr}.payment-grid{grid-template-columns:repeat(2,1fr)}}
+
 </style>
 </head>
 <body>
@@ -229,7 +261,10 @@ main{padding:14px;min-width:0}
       <div class="parking-map"><div class="route-layer" id="routeLayer"></div>
         <div class="map-head">
           <div><div style="font-size:18px" id="floorName">Niveau A</div><div style="font-size:12px;color:var(--muted)" id="floorStats"></div></div>
-          <div id="floorState" style="color:var(--green)">Étage ouvert</div>
+          <div style="text-align:right">
+            <div id="floorState" style="color:var(--green)">Étage ouvert</div>
+            <div class="route-status" id="vehicleRouteStatus" style="margin-top:5px">Circulation fluide</div>
+          </div>
         </div>
         <div class="road">
           <div class="spaces" id="carSpaces"></div>
@@ -306,40 +341,79 @@ main{padding:14px;min-width:0}
 <section class="view" id="cash">
 <div class="stack">
   <section class="panel">
-    <div class="panel-title"><h2>Caisse principale</h2><div class="control-row"><button class="small secondary" onclick="openCashRegister()">Ouvrir caisse</button><button class="small warning" onclick="closeCashRegister()">Clôturer caisse</button></div></div>
+    <div class="panel-title">
+      <h2>Poste d’encaissement</h2>
+      <div class="route-status"><span id="cashClock">Poste disponible</span></div>
+    </div>
     <div class="panel-body">
-      <div class="grid-main" style="grid-template-columns:1.2fr .8fr">
+      <div class="cash-workspace">
         <div class="stack">
-          <div class="cash-display">
-            <div class="cash-line"><span>Plaque</span><span id="cashPlate">—</span></div>
-            <div class="cash-line"><span>Entrée</span><span id="cashEntry">—</span></div>
-            <div class="cash-line"><span>Durée</span><span id="cashDuration">—</span></div>
-            <div class="cash-line"><span>Détail</span><span id="cashRate">—</span></div>
-            <div class="cash-line"><span>Remise</span><span id="cashDiscount">0,00 €</span></div>
-            <div class="cash-line cash-total"><span>Total TTC</span><span id="cashTotal">0,00 €</span></div>
+          <div class="section">
+            <label><span class="label">Rechercher une plaque</span><input id="cashSearch" placeholder="Ex. AB-123-CD" oninput="renderCash()"></label>
           </div>
-          <div class="grid3">
+          <div class="cash-vehicle-list" id="cashVehicleList"></div>
+        </div>
+
+        <div class="stack">
+          <div class="cash-screen">
+            <div class="cash-screen-head">
+              <div>
+                <div class="big-plate" id="cashPlate">—</div>
+                <div class="confidence" id="cashVehicleStatus">Sélectionnez un véhicule</div>
+              </div>
+              <span class="status-pill" id="cashPaymentState">EN ATTENTE</span>
+            </div>
+            <div class="cash-breakdown">
+              <div class="cash-line"><span>Entrée</span><span id="cashEntry">—</span></div>
+              <div class="cash-line"><span>Durée</span><span id="cashDuration">—</span></div>
+              <div class="cash-line"><span>Tarification</span><span id="cashRate">—</span></div>
+              <div class="cash-line"><span>Montant brut</span><span id="cashGross">0,00 €</span></div>
+              <div class="cash-line"><span>Remise / gratuité</span><span id="cashDiscount">0,00 €</span></div>
+              <div class="cash-line"><span>Déjà réglé</span><span id="cashPaid">0,00 €</span></div>
+              <div class="cash-line"><span>Délai de sortie</span><span id="cashGrace">—</span></div>
+            </div>
+            <div class="cash-balance"><span>Reste à payer</span><strong id="cashTotal">0,00 €</strong></div>
+          </div>
+
+          <div class="payment-grid">
             <button onclick="payCurrent('CB')">Carte bancaire</button>
             <button onclick="payCurrent('CONTACTLESS')" class="secondary">Sans contact</button>
             <button onclick="openCashPayment()" class="secondary">Espèces</button>
-            <button onclick="payCurrent('SUBSCRIPTION')" class="secondary">Abonnement</button>
-            <button onclick="applyDiscount()" class="warning">Remise</button>
-            <button onclick="cancelCurrentPayment()" class="danger">Annuler</button>
+            <button onclick="openMixedPayment()" class="secondary">Paiement mixte</button>
+            <button onclick="validateSubscription()" class="secondary">Abonnement</button>
+            <button onclick="toggleLostTicket()" class="warning">Ticket perdu</button>
+            <button onclick="applyDiscount()" class="warning">Geste commercial</button>
+            <button onclick="grantFreePass()" class="secondary">Gratuité</button>
+            <button onclick="cancelCurrentPayment()" class="danger">Annuler règlement</button>
           </div>
         </div>
-        <div class="stack">
+
+        <div class="stack cash-sidebar">
           <div class="section">
-            <h3>État de caisse</h3>
-            <div class="cash-line"><span>Statut</span><span id="registerStatus">Fermée</span></div>
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <h3 style="margin:0">Session de caisse</h3>
+              <span class="register-state" id="registerStatus">Fermée</span>
+            </div>
+            <label style="margin-top:10px;display:block"><span class="label">Agent</span><input id="cashierName" value="Superviseur"></label>
+            <label style="margin-top:8px;display:block"><span class="label">Fond de caisse</span><input id="openingFloatInput" type="number" min="0" step="0.01" value="100"></label>
+            <div class="control-row" style="margin-top:9px">
+              <button class="small success" onclick="openCashRegister()">Ouvrir</button>
+              <button class="small warning" onclick="closeCashRegister()">Clôturer</button>
+            </div>
+            <div class="cash-line"><span>Session</span><span id="registerSession">—</span></div>
             <div class="cash-line"><span>Fond de caisse</span><span id="cashFloat">0,00 €</span></div>
             <div class="cash-line"><span>CB</span><span id="sumCB">0,00 €</span></div>
             <div class="cash-line"><span>Espèces</span><span id="sumCash">0,00 €</span></div>
             <div class="cash-line"><span>Sans contact</span><span id="sumContactless">0,00 €</span></div>
+            <div class="cash-line"><span>Borne</span><span id="sumKiosk">0,00 €</span></div>
+            <div class="cash-line"><span>Remboursements</span><span id="sumRefunds">0,00 €</span></div>
+            <div class="cash-line cash-total"><span>Total session</span><span id="sumSession">0,00 €</span></div>
           </div>
+
           <div class="section">
             <h3>Actions</h3>
             <div class="control-row">
-              <button class="small secondary" onclick="printReceipt()">Ticket</button>
+              <button class="small secondary" onclick="printReceipt()">Dernier ticket</button>
               <button class="small secondary" onclick="exportData()">Exporter CSV</button>
               <button class="small secondary" onclick="exportSave()">Exporter partie</button>
               <label class="small secondary" style="display:inline-block;padding:7px 9px;border-radius:9px;cursor:pointer">Importer partie<input type="file" id="importSaveInput" accept=".parking,.json" style="display:none"></label>
@@ -350,9 +424,21 @@ main{padding:14px;min-width:0}
     </div>
   </section>
   <section class="panel">
-    <div class="panel-title"><h2>Journal de caisse</h2></div>
+    <div class="panel-title"><h2>Journal de caisse</h2><span id="historyCount">0 opération</span></div>
+    <div class="panel-body" style="padding-bottom:0">
+      <div class="cash-filters">
+        <input id="historySearch" placeholder="Plaque ou numéro de ticket" oninput="renderHistory()">
+        <select id="historyMethod" onchange="renderHistory()"><option value="">Tous les moyens</option><option>CB</option><option>CONTACTLESS</option><option>CASH</option><option>MIXTE</option><option>KIOSK</option><option>GRATUITÉ</option></select>
+        <select id="historyStatus" onchange="renderHistory()"><option value="">Tous les statuts</option><option>VALIDÉ</option><option>ANNULÉ</option><option>REMBOURSÉ</option></select>
+      </div>
+      <div class="control-row" style="margin-top:9px">
+        <button class="small secondary" onclick="duplicateReceipt()">Duplicata sélectionné</button>
+        <button class="small warning" onclick="refundTransaction()">Rembourser</button>
+        <button class="small danger" onclick="voidTransaction()">Annuler la transaction</button>
+      </div>
+    </div>
     <div class="panel-body table-wrap">
-      <table class="table"><thead><tr><th>Heure</th><th>Plaque</th><th>Durée</th><th>Moyen</th><th>Montant</th><th>Statut</th></tr></thead><tbody id="historyBody"></tbody></table>
+      <table class="table"><thead><tr><th>Ticket</th><th>Date / heure</th><th>Plaque</th><th>Durée</th><th>Moyen</th><th>Montant</th><th>Agent</th><th>Statut</th></tr></thead><tbody id="historyBody"></tbody></table>
     </div>
   </section>
 </div>
@@ -506,8 +592,45 @@ main{padding:14px;min-width:0}
         <div class="cash-line"><span>Montant reçu</span><span id="cashModalReceived">0,00 €</span></div>
         <div class="cash-line cash-total"><span>Monnaie à rendre</span><span id="cashModalChange">0,00 €</span></div>
       </div>
-      <input id="cashReceivedInput" type="number" min="0" step="0.5" placeholder="Montant reçu">
+      <input id="cashReceivedInput" type="number" min="0" step="0.01" placeholder="Montant reçu">
+      <div class="control-row">
+        <button class="small secondary" onclick="setCashReceived('EXACT')">Montant exact</button>
+        <button class="small secondary" onclick="setCashReceived(5)">5 €</button>
+        <button class="small secondary" onclick="setCashReceived(10)">10 €</button>
+        <button class="small secondary" onclick="setCashReceived(20)">20 €</button>
+        <button class="small secondary" onclick="setCashReceived(50)">50 €</button>
+      </div>
       <button onclick="confirmCashPayment()">Valider le paiement</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="mixedModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Paiement mixte</h3><button class="secondary small" onclick="closeModal('mixedModal')">Fermer</button></div>
+    <div class="modal-body stack">
+      <div class="cash-display">
+        <div class="cash-line"><span>Total à payer</span><span id="mixedDue">0,00 €</span></div>
+        <div class="cash-line"><span>Part espèces</span><span id="mixedCashDisplay">0,00 €</span></div>
+        <div class="cash-line cash-total"><span>Part carte</span><span id="mixedCardDisplay">0,00 €</span></div>
+      </div>
+      <label><span class="label">Montant payé en espèces</span><input id="mixedCashInput" type="number" min="0" step="0.01" oninput="updateMixedPayment()"></label>
+      <button onclick="confirmMixedPayment()">Valider le paiement mixte</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="closingModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Clôture de caisse</h3><button class="secondary small" onclick="closeModal('closingModal')">Fermer</button></div>
+    <div class="modal-body stack">
+      <div class="cash-display">
+        <div class="cash-line"><span>Espèces théoriques</span><span id="closingExpected">0,00 €</span></div>
+        <div class="cash-line"><span>Montant compté</span><span id="closingCounted">0,00 €</span></div>
+        <div class="cash-line cash-total"><span>Écart</span><span id="closingDifference">0,00 €</span></div>
+      </div>
+      <label><span class="label">Espèces réellement présentes dans le tiroir</span><input id="closingActualInput" type="number" min="0" step="0.01" oninput="updateClosingDifference()"></label>
+      <button class="warning" onclick="confirmCashClosure()">Valider la clôture</button>
     </div>
   </div>
 </div>
@@ -542,11 +665,11 @@ let state=createInitialState();
 
 function createInitialState(){
   return{
-    version:2,floors:[],selectedFloor:0,entryQueue:[],exitQueue:[],currentEntry:null,currentExit:null,
+    version:3,floors:[],selectedFloor:0,entryQueue:[],exitQueue:[],currentEntry:null,currentExit:null,
     vehicles:[],transactions:[],eventLog:[],manualStatus:'AUTO',revenue:0,budget:10000,
     stats:{entries:0,exits:0,overstays:0,satisfaction:100,waitTotal:0,waitCount:0},
     simTime:new Date(2026,6,27,8,0,0).getTime(),speed:5,lastRealTick:Date.now(),nextId:1,sound:true,
-    register:{open:false,float:0,openedAt:null},
+    register:{open:false,float:0,openedAt:null,agent:null,sessionId:null,closedAt:null,actualCash:null,difference:null},
     rates:{freeMinutes:5,baseCar:2,stepCar:1.5,baseBus:5,stepBus:3,lostTicket:25},
     staff:[],equipment:{entryGate:100,exitGate:100,anpr:100,cameras:100,lighting:100,elevator:100},
     goals:{revenue:250,entries:30,satisfaction:85,maxWait:180},
@@ -556,7 +679,8 @@ function createInitialState(){
     contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,
     construction:[],fraudCount:0,collisions:0,badParking:0,
-    mixedPayment:null,refunds:[],kioskPayments:0
+    mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
+    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide'
   }
 }
 function initFloor(index){
@@ -857,8 +981,8 @@ function renderFloors(){
 }
 function renderSpaces(id,spaces){
   const el=document.getElementById(id);el.innerHTML='';
-  spaces.forEach(s=>{const d=document.createElement('div');d.className=`space ${s.type==='bus'?'bus-space ':''}${s.status} ${s.kind}`;d.innerHTML=`<span class="num">${s.id}</span><span class="kind">${kindLabel(s.kind)}</span>`;
-    const v=state.vehicles.find(v=>v.id===s.vehicleId);if(v){const car=document.createElement('div');car.className='mini-car'+(s.type==='bus'?' mini-bus':'');car.style.background=v.color;car.title=`${v.plate} • ${Math.floor(durationMinutes(v))} min`;car.onclick=e=>{e.stopPropagation();openSpaceInfo(s,v)};d.appendChild(car)}
+  spaces.forEach(s=>{const d=document.createElement('div');const v=state.vehicles.find(v=>v.id===s.vehicleId);d.dataset.spaceId=s.id;d.className=`space ${s.type==='bus'?'bus-space ':''}${s.status} ${s.kind}${v?.status==='driving-to-space'?' arriving':''}`;d.innerHTML=`<span class="num">${s.id}</span><span class="kind">${kindLabel(s.kind)}</span>`;
+    if(v&&!v.inTransit){const car=document.createElement('div');car.className='mini-car'+(s.type==='bus'?' mini-bus':'');car.style.background=v.color;car.title=`${v.plate} • ${Math.floor(durationMinutes(v))} min`;car.onclick=e=>{e.stopPropagation();openSpaceInfo(s,v)};d.appendChild(car)}
     d.onclick=()=>openSpaceInfo(s,v);el.appendChild(d)})
 }
 function kindLabel(k){return({normal:'Standard',pmr:'PMR',ev:'Électrique',family:'Famille',staff:'Personnel',bus:'Bus'})[k]||k}
@@ -922,312 +1046,23 @@ function renderReports(){
 }
 function logEvent(text,type=''){state.eventLog.unshift({time:simNow().toLocaleTimeString('fr-FR'),text,type});state.eventLog=state.eventLog.slice(0,100)}
 function renderLog(){const el=document.getElementById('eventLog');el.innerHTML='';state.eventLog.forEach(x=>el.insertAdjacentHTML('beforeend',`<div class="log-item ${x.type}">${x.time} — ${x.text}</div>`))}
-function switchView(id){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));
-/* ================= VERSION INTÉGRALE : EXTENSIONS ================= */
-const _oldInitGame=initGame;
-initGame=function(){
-  _oldInitGame();
-  ensureAdvancedState();
-  createDefaultMissions();
+function switchView(id){
+  document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===id));
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id));
   renderAll();
-};
-function ensureAdvancedState(){
-  const defaults={day:1,reputation:50,companyLevel:1,xp:0,difficulty:'normal',graceMinutes:5,maxHeight:2.05,
-    dailyOperatingCost:180,electricityCost:0,contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
-    scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,construction:[],fraudCount:0,collisions:0,
-    badParking:0,mixedPayment:null,refunds:[],kioskPayments:0};
-  Object.entries(defaults).forEach(([k,v])=>{if(state[k]===undefined)state[k]=v});
 }
-function createDefaultMissions(){
-  if(state.missions.length)return;
-  state.missions=[
-    {id:'m1',title:'Service fluide',desc:'Faire sortir 15 véhicules',target:15,reward:250,type:'exits',done:false},
-    {id:'m2',title:'Caisse performante',desc:'Atteindre 300 € de chiffre d’affaires',target:300,reward:300,type:'revenue',done:false},
-    {id:'m3',title:'Qualité de service',desc:'Conserver 90 % de satisfaction',target:90,reward:180,type:'satisfaction',done:false}
-  ]
-}
-const _oldRandomVehicle=randomVehicle;
-randomVehicle=function(forceType){
-  const v=_oldRandomVehicle(forceType);
-  v.blacklisted=state.blacklist.includes(v.plate);
-  v.subscription=v.subscription||state.subscribers.includes(v.plate);
-  v.priority=v.emergency||state.priority.includes(v.plate);
-  return v
-}
-const _oldOpenEntry=openEntry;
-openEntry=function(){
-  const v=state.currentEntry;
-  if(v){
-    if(v.blacklisted)return toast('ALERTE : plaque inscrite sur liste noire. Entrée bloquée.');
-    if(v.height>state.maxHeight&&!v.emergency)return toast(`Véhicule trop haut : ${v.height} m pour une limite de ${state.maxHeight} m.`);
-    if(v.emergency){v.priority=true;logEvent(`Véhicule prioritaire ${v.plate} : passage immédiat demandé.`,'warn')}
-  }
-  _oldOpenEntry();
-  animateRouteVehicle(v,'entry');
-}
-const _oldPayCurrent=payCurrent;
-payCurrent=function(method,amountOverride=null){
-  const v=state.currentExit;
-  _oldPayCurrent(method,amountOverride);
-  if(v&&v.paid){
-    v.paidAt=state.simTime;
-    if(!v.receiptNo)v.receiptNo=state.receiptCounter++;
-    gainXP(10);
-  }
-}
-const _oldOpenExit=openExit;
-openExit=function(override=false){
-  const v=state.currentExit;
-  if(v&&v.paid&&v.paidAt){
-    const since=(state.simTime-v.paidAt)/60000;
-    if(since>state.graceMinutes){
-      v.paid=false;
-      const supplement=Math.max(0,feeFor(v)-v.paidAmount);
-      if(supplement>0&&!override){toast(`Délai de sortie dépassé. Supplément : ${euro.format(supplement)}`);renderAll();return}
-      v.paid=true;
-    }
-  }
-  if(v&&v.fraudRisk&&Math.random()<.35&&!override){
-    state.fraudCount++;state.reputation=Math.max(0,state.reputation-2);
-    triggerSpecificAlert(`Tentative de fraude détectée derrière ${v.plate}. Vérifiez la voie de sortie.`);
-    return;
-  }
-  _oldOpenExit(override);
-  animateRouteVehicle(v,'exit');
-  checkMissions();
-}
-function animateRouteVehicle(v,direction){
-  if(!v)return;
-  const layer=document.getElementById('routeLayer');if(!layer)return;
-  const d=document.createElement('div');d.className='moving-vehicle';d.style.background=v.color;
-  d.style.left=direction==='entry'?'0%':'82%';d.style.top=direction==='entry'?'78%':'24%';layer.appendChild(d);
-  requestAnimationFrame(()=>{d.style.left=direction==='entry'?'74%':'4%';d.style.top=direction==='entry'?'26%':'80%';d.style.transform='rotate('+(direction==='entry'?-12:168)+'deg)'});
-  setTimeout(()=>d.remove(),1400)
-}
-function triggerSpecificAlert(text){
-  const b=document.getElementById('globalAlert');b.textContent=text;b.classList.add('show');
-  beep(260,.45);setTimeout(()=>b.classList.remove('show'),7000)
-}
-function kioskLookup(){
-  const plate=document.getElementById('kioskPlate').value.toUpperCase().trim();
-  const v=state.vehicles.find(x=>x.plate===plate&&['parked','waiting-exit'].includes(x.status));
-  const box=document.getElementById('kioskResult');
-  if(!v){box.textContent='Aucun véhicule présent avec cette plaque.';return}
-  box.innerHTML=`Durée : ${Math.floor(durationMinutes(v))} min<br>Total : <strong>${euro.format(amountDue(v))}</strong><br><button class="small" onclick="payAtKiosk(${v.id})">Payer à la borne</button>`
-}
-function payAtKiosk(id){
-  const v=state.vehicles.find(x=>x.id===id);if(!v)return;
-  if(v.paid)return toast('Stationnement déjà payé.');
-  const amount=amountDue(v);v.paid=true;v.paidAt=state.simTime;v.paidAmount=amount;v.paymentMethod='KIOSK';v.receiptNo=state.receiptCounter++;
-  state.revenue+=amount;state.budget+=amount;state.kioskPayments++;
-  state.transactions.push({id:String(Date.now()+Math.random()),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:'KIOSK',amount,status:'VALIDÉ'});
-  logEvent(`${v.plate} a payé ${euro.format(amount)} à la borne.`,'good');toast('Paiement borne accepté.');renderAll()
-}
-function simulateKioskCustomer(){
-  const v=occupiedVehicles().find(x=>!x.paid);if(!v)return toast('Aucun client disponible.');
-  document.getElementById('kioskPlate').value=v.plate;kioskLookup()
-}
-function mixedPayment(){
-  const v=state.currentExit;if(!v)return toast('Aucun véhicule.');
-  const total=amountDue(v);
-  const first=Number(prompt(`Total ${euro.format(total)}. Montant en espèces ?`,'1'));
-  if(!Number.isFinite(first)||first<0||first>total)return;
-  if(!state.register.open)return toast('Caisse fermée.');
-  const second=total-first;
-  v.paid=true;v.paidAt=state.simTime;v.paidAmount=total;v.paymentMethod='MIXTE';v.receiptNo=state.receiptCounter++;
-  state.revenue+=total;state.budget+=total;
-  state.transactions.push({id:String(Date.now()),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:`MIXTE (${euro.format(first)} espèces / ${euro.format(second)} CB)`,amount:total,status:'VALIDÉ'});
-  logEvent(`Paiement mixte validé pour ${v.plate}.`,'good');renderAll()
-}
-function partialPayment(){
-  const v=state.currentExit;if(!v)return;
-  const due=amountDue(v),part=Number(prompt(`Total dû ${euro.format(due)}. Montant partiel ?`,'1'));
-  if(!Number.isFinite(part)||part<=0||part>=due)return toast('Montant partiel invalide.');
-  v.discount=(v.discount||0)+part;state.revenue+=part;state.budget+=part;
-  state.transactions.push({id:String(Date.now()),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:'PAIEMENT PARTIEL',amount:part,status:'VALIDÉ'});
-  logEvent(`Acompte de ${euro.format(part)} reçu pour ${v.plate}.`,'warn');renderAll()
-}
-function refundTransaction(){
-  const valid=[...state.transactions].reverse().find(t=>t.status==='VALIDÉ'&&t.amount>0);
-  if(!valid)return toast('Aucune transaction remboursable.');
-  if(!confirm(`Rembourser ${euro.format(valid.amount)} pour ${valid.plate} ?`))return;
-  valid.status='REMBOURSÉ';state.revenue-=valid.amount;state.budget-=valid.amount;state.refunds.push(valid);
-  logEvent(`Transaction ${valid.plate} remboursée.`,'warn');renderAll()
-}
-function duplicateReceipt(){
-  const tx=[...state.transactions].reverse().find(t=>t.status==='VALIDÉ');
-  if(!tx)return toast('Aucun ticket.');
-  const w=window.open('','_blank');w.document.write(`<pre>TICKET DUPLICATA\nPlaque : ${tx.plate}\nHeure : ${tx.time}\nMontant : ${euro.format(tx.amount)}\nMoyen : ${tx.method}</pre>`);w.print()
-}
-function endDay(){
-  const salaries=state.staff.reduce((n,s)=>n+(s.salary||0),0);
-  const electricity=Math.round((state.floors.length*28+occupiedVehicles().length*1.3)*100)/100;
-  const maintenance=Math.round(Object.values(state.equipment).reduce((n,v)=>n+(100-v)*.25,0)*100)/100;
-  const contractIncome=state.contracts.reduce((n,c)=>n+c.dailyIncome,0);
-  const costs=state.dailyOperatingCost+salaries+electricity+maintenance;
-  state.budget+=contractIncome-costs;state.expenses+=costs;state.electricityCost+=electricity;
-  const dayRevenue=state.revenue-state.lastDayRevenue;state.lastDayRevenue=state.revenue;
-  state.reputation=Math.max(0,Math.min(100,state.reputation+(state.stats.satisfaction>=85?2:-3)));
-  state.day++;state.simTime=new Date(2026,6,26+state.day,8,0,0).getTime();
-  state.staff.forEach(s=>s.fatigue=Math.max(0,s.fatigue-55));
-  state.equipment.lighting=Math.max(0,state.equipment.lighting-2);
-  alert(`CLÔTURE JOUR ${state.day-1}\n\nRecettes du jour : ${euro.format(dayRevenue)}\nContrats : ${euro.format(contractIncome)}\nSalaires : ${euro.format(salaries)}\nÉlectricité : ${euro.format(electricity)}\nMaintenance : ${euro.format(maintenance)}\nRésultat journalier : ${euro.format(dayRevenue+contractIncome-costs)}`);
-  logEvent(`Journée ${state.day-1} clôturée. Résultat : ${euro.format(dayRevenue+contractIncome-costs)}.`,'good');
-  gainXP(Math.max(10,Math.round(dayRevenue/10)));createDailyScenarioPossibility();renderAll();saveGame()
-}
-function createDailyScenarioPossibility(){if(state.day%3===0)startScenario()}
-function startScenario(){
-  const scenarios=[
-    {name:'Soirée événementielle',desc:'Affluence multipliée et clients pressés.',reward:450,duration:1},
-    {name:'Contrôle de sécurité',desc:'Les plaques et abonnements doivent être vérifiés avec précision.',reward:300,duration:1},
-    {name:'Panne générale',desc:'Les équipements se dégradent plus vite durant la journée.',reward:550,duration:1},
-    {name:'Festival de bus',desc:'Forte demande sur les emplacements bus.',reward:500,duration:1}
-  ];
-  state.scenario=scenarios[Math.floor(Math.random()*scenarios.length)];
-  triggerSpecificAlert(`Scénario : ${state.scenario.name} — ${state.scenario.desc}`);
-  logEvent(`Scénario lancé : ${state.scenario.name}.`,'warn');renderAll()
-}
-function addContract(){
-  const options=[
-    {name:'Entreprise locale',dailyIncome:85,spaces:2,cost:250},
-    {name:'Hôtel partenaire',dailyIncome:140,spaces:3,cost:420},
-    {name:'Autocariste régional',dailyIncome:210,spaces:1,cost:600},
-    {name:'Abonnement personnel',dailyIncome:65,spaces:2,cost:180}
-  ];
-  const c=options[Math.floor(Math.random()*options.length)];
-  if(state.budget<c.cost)return toast('Budget insuffisant pour mettre en place ce contrat.');
-  c.id=Date.now();state.budget-=c.cost;state.expenses+=c.cost;state.contracts.push(c);
-  logEvent(`Contrat signé : ${c.name}.`,'good');renderAll()
-}
-function cancelContract(id){state.contracts=state.contracts.filter(c=>c.id!==id);renderAll()}
-function addWatchPlate(type){
-  const input=document.getElementById(type==='blacklist'?'blacklistInput':type==='subscribers'?'subscriberInput':'priorityInput');
-  const plate=input.value.toUpperCase().trim();if(!plate)return;
-  if(!state[type].includes(plate))state[type].push(plate);input.value='';renderAll()
-}
-function removeWatchPlate(type,plate){state[type]=state[type].filter(p=>p!==plate);renderAll()}
-function gainXP(n){state.xp+=n;const needed=state.companyLevel*250;if(state.xp>=needed){state.xp-=needed;state.companyLevel++;state.budget+=500;toast(`Niveau ${state.companyLevel} atteint : bonus 500 €.`)}}
-function checkMissions(){
-  state.missions.forEach(m=>{
-    const value=m.type==='exits'?state.stats.exits:m.type==='revenue'?state.revenue:state.stats.satisfaction;
-    if(!m.done&&value>=m.target){m.done=true;state.budget+=m.reward;state.reputation=Math.min(100,state.reputation+2);gainXP(100);toast(`Mission réussie : ${m.title}`)}
-  })
-}
-const _oldAddFloor=addFloor;
-addFloor=function(){
-  const before=state.floors.length;_oldAddFloor();
-  if(state.floors.length>before){
-    const f=state.floors[state.floors.length-1];f.closed=true;
-    state.construction.push({floor:f.name,readyAt:state.simTime+60*60000});
-    logEvent(`Niveau ${f.name} en construction pendant 60 minutes simulées.`,'warn')
-  }
-}
-function processConstruction(){
-  state.construction=state.construction.filter(c=>{
-    if(state.simTime>=c.readyAt){const f=state.floors.find(x=>x.name===c.floor);if(f)f.closed=false;logEvent(`Construction du niveau ${c.floor} terminée.`,'good');return false}
-    return true
-  })
-}
-function advancedSimulation(){
-  processConstruction();
-  if(state.speed===0)return;
-  const factor=state.difficulty==='hard'?1.6:state.difficulty==='easy'?.7:1;
-  if(Math.random()<.0004*state.speed*factor){
-    const parked=occupiedVehicles().filter(v=>v.status==='parked');
-    const v=parked[Math.floor(Math.random()*parked.length)];
-    if(v&&!v.misparked){v.misparked=true;state.badParking++;state.stats.satisfaction-=1;logEvent(`${v.plate} est mal stationné et gêne une place voisine.`,'warn')}
-  }
-  if(Math.random()<.00012*state.speed*factor){
-    state.collisions++;state.stats.satisfaction-=4;triggerSpecificAlert('Accrochage mineur détecté dans une voie interne. Intervention de sécurité nécessaire.');
-  }
-  if(state.scenario?.name==='Panne générale'&&Math.random()<.004*state.speed){
-    const k=Object.keys(state.equipment)[Math.floor(Math.random()*Object.keys(state.equipment).length)];
-    state.equipment[k]=Math.max(0,state.equipment[k]-8)
-  }
-  if(state.scenario?.name==='Festival de bus'&&Math.random()<.015*state.speed&&state.entryQueue.length<7)addArrival('bus');
-  checkMissions()
-}
-function renderAdvanced(){
-  ensureAdvancedState();createDefaultMissions();
-  const set=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val};
-  set('gameDay',state.day);set('difficultyLabel',({easy:'Facile',normal:'Normal',hard:'Difficile'})[state.difficulty]);
-  set('reputationLabel',`${Math.round(state.reputation)} / 100`);set('companyLevel',state.companyLevel);
-  const contracts=document.getElementById('contractsBox');if(contracts){contracts.innerHTML=state.contracts.length?'':'<div style="color:var(--muted)">Aucun contrat actif.</div>';state.contracts.forEach(c=>contracts.insertAdjacentHTML('beforeend',`<div class="management-card"><h3>${c.name}</h3><div>${euro.format(c.dailyIncome)} / jour • ${c.spaces} place(s)</div><button class="small danger" onclick="cancelContract(${c.id})">Résilier</button></div>`))}
-  const missions=document.getElementById('missionsBox');if(missions){missions.innerHTML='';state.missions.forEach(m=>{const value=m.type==='exits'?state.stats.exits:m.type==='revenue'?state.revenue:state.stats.satisfaction;missions.insertAdjacentHTML('beforeend',`<div class="management-card scenario-card ${m.done?'mission-complete':''}"><h3>${m.done?'✓ ':''}${m.title}</h3><div>${m.desc}</div><div class="progress" style="margin:8px 0"><span style="width:${Math.min(100,value/m.target*100)}%"></span></div><small>Récompense : ${euro.format(m.reward)}</small></div>`)})}
-  const schedule=document.getElementById('scheduleBox');if(schedule){schedule.innerHTML='<div class="schedule-grid"><strong>Employé</strong><strong>Matin</strong><strong>Après-midi</strong><strong>Nuit</strong>'+state.staff.map(s=>`<span>${s.name}</span><select onchange="setShift(${s.id},this.value)"><option>Service</option><option>Pause</option><option>Repos</option></select><select><option>Service</option><option>Pause</option><option>Repos</option></select><select><option>Repos</option><option>Service</option></select>`).join('')+'</div>'}
-  renderWatch('blacklist','blacklistBox');renderWatch('subscribers','subscribersBox');renderWatch('priority','priorityBox');
-  const ramp=document.getElementById('rampDisplay');if(ramp)ramp.textContent=state.floors.length>1?`Rampe active vers ${state.floors.length-1} autre(s) niveau(x)`:'Rampe future • ajoutez un étage';
-  renderPedestrians()
-}
-function renderWatch(type,id){const box=document.getElementById(id);if(!box)return;box.innerHTML=state[type].map(p=>`<span class="status-pill">${p} <button class="small danger" onclick="removeWatchPlate('${type}','${p}')">×</button></span>`).join(' ')}
-function setShift(id,value){const s=state.staff.find(x=>x.id===id);if(s)s.status=value==='Repos'?'Repos':value==='Pause'?'Pause':'En service';renderAll()}
-function renderPedestrians(){
-  const layer=document.getElementById('routeLayer');if(!layer)return;
-  layer.querySelectorAll('.pedestrian').forEach(e=>e.remove());
-  const count=Math.min(5,Math.ceil(occupiedVehicles().length/5));
-  for(let i=0;i<count;i++){const p=document.createElement('div');p.className='pedestrian';p.style.left=(15+i*13)+'%';p.style.top=(60-(i%2)*18)+'%';p.style.animationDelay=(i*.7)+'s';layer.appendChild(p)}
-}
-const _oldRenderAll=renderAll;
-renderAll=function(){_oldRenderAll();renderAdvanced()}
-const _oldBindSettings=bindSettings;
-bindSettings=function(){_oldBindSettings();ensureAdvancedState();const g=document.getElementById('settingGrace'),h=document.getElementById('settingMaxHeight'),d=document.getElementById('settingDifficulty');if(g)g.value=state.graceMinutes;if(h)h.value=state.maxHeight;if(d)d.value=state.difficulty}
-const _oldSaveSettings=saveSettings;
-saveSettings=function(){
-  state.graceMinutes=Number(document.getElementById('settingGrace').value||5);
-  state.maxHeight=Number(document.getElementById('settingMaxHeight').value||2.05);
-  state.difficulty=document.getElementById('settingDifficulty').value;
-  _oldSaveSettings()
-}
-function printFullReport(){
-  const profit=state.revenue-state.expenses;
-  const w=window.open('','_blank');
-  w.document.write(`<div class="invoice"><h1>Rapport d’exploitation – Parking Manager Pro</h1><p>Jour ${state.day} • ${simNow().toLocaleString('fr-FR')}</p><table><tr><th>Chiffre d’affaires</th><td>${euro.format(state.revenue)}</td></tr><tr><th>Dépenses</th><td>${euro.format(state.expenses)}</td></tr><tr><th>Résultat net</th><td>${euro.format(profit)}</td></tr><tr><th>Entrées / sorties</th><td>${state.stats.entries} / ${state.stats.exits}</td></tr><tr><th>Satisfaction</th><td>${Math.round(state.stats.satisfaction)} %</td></tr><tr><th>Réputation</th><td>${Math.round(state.reputation)} / 100</td></tr><tr><th>Fraudes détectées</th><td>${state.fraudCount}</td></tr><tr><th>Accrochages</th><td>${state.collisions}</td></tr><tr><th>Véhicules mal stationnés</th><td>${state.badParking}</td></tr></table><h2>Transactions</h2><table><tr><th>Heure</th><th>Plaque</th><th>Moyen</th><th>Montant</th><th>Statut</th></tr>${state.transactions.map(t=>`<tr><td>${t.time}</td><td>${t.plate}</td><td>${t.method}</td><td>${euro.format(t.amount)}</td><td>${t.status}</td></tr>`).join('')}</table></div>`);
-  w.document.close();w.print()
-}
-function showKeyboardHelp(){alert('RACCOURCIS CLAVIER\\n\\nE : ouvrir l’entrée\\nS : ouvrir la sortie\\nP : encaisser\\nA : nouvelle arrivée\\nEspace : pause / reprise\\n1 à 5 : changer de vue\\nR : rapport imprimable')}
-document.addEventListener('keydown',e=>{
-  if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))return;
-  const k=e.key.toLowerCase();
-  if(k==='e')openEntry();else if(k==='s')openExit(false);else if(k==='p')openPayment();else if(k==='a')addArrival();
-  else if(e.code==='Space'){e.preventDefault();state.speed=state.speed===0?5:0;document.getElementById('speedSelect').value=String(state.speed)}
-  else if(k==='r')printFullReport();else if(['1','2','3','4','5','6'].includes(k)){const ids=['operations','cash','staff','stats','management','settings'];switchView(ids[Number(k)-1])}
-});
-setInterval(advancedSimulation,1000);
-setTimeout(()=>{
-  const cashButtons=document.querySelector('#cash .grid3');
-  if(cashButtons){
-    cashButtons.insertAdjacentHTML('beforeend','<button onclick="mixedPayment()" class="secondary">Paiement mixte</button><button onclick="partialPayment()" class="warning">Paiement partiel</button><button onclick="refundTransaction()" class="danger">Rembourser</button><button onclick="duplicateReceipt()" class="secondary">Duplicata</button>');
-  }
-},0);
-
-document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));renderAll()}
-function openModal(id){document.getElementById(id).classList.add('open')}function closeModal(id){document.getElementById(id).classList.remove('open')}
-function toast(text){const w=document.getElementById('toastWrap'),t=document.createElement('div');t.className='toast';t.textContent=text;w.appendChild(t);setTimeout(()=>t.remove(),2800)}
+function openModal(id){document.getElementById(id).classList.add("open")}
+function closeModal(id){document.getElementById(id).classList.remove("open")}
+function toast(text){const w=document.getElementById("toastWrap"),t=document.createElement("div");t.className="toast";t.textContent=text;w.appendChild(t);setTimeout(()=>t.remove(),2800)}
 function beep(freq=700,duration=.07){if(!state.sound)return;try{const ctx=new(window.AudioContext||window.webkitAudioContext)(),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=freq;o.connect(g);g.connect(ctx.destination);g.gain.value=.035;o.start();o.stop(ctx.currentTime+duration)}catch(e){}}
-function toggleSound(){state.sound=!state.sound;document.getElementById('soundBtn').textContent=`Sons : ${state.sound?'activés':'coupés'}`}
-function printReceipt(){
-  const v=state.currentExit;if(!v)return toast('Aucun véhicule.');
-  const text=`PARKING MANAGER PRO\nTicket n° ${v.receiptNo||state.receiptCounter}\nPlaque : ${v.plate}\nEntrée : ${new Date(v.entryAt).toLocaleString('fr-FR')}\nDurée : ${Math.floor(durationMinutes(v))} min\nTotal : ${euro.format(amountDue(v))}\nMerci de votre visite.`;
-  const w=window.open('','_blank','width=420,height=600');w.document.write(`<pre style="font:16px monospace;white-space:pre-wrap;padding:30px">${text}</pre>`);w.print()
-}
-function saveGame(){localStorage.setItem('parkingManagerProSave',JSON.stringify(state));toast('Partie sauvegardée.')}
-function loadGame(){
-  const raw=localStorage.getItem('parkingManagerProSave');if(!raw)return toast('Aucune sauvegarde.');
-  state=JSON.parse(raw);state.lastRealTick=Date.now();bindSettings();document.getElementById('speedSelect').value=String(state.speed);renderAll();toast('Sauvegarde chargée.')
-}
-function exportSave(){
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='parking_manager_pro.parking';a.click();URL.revokeObjectURL(a.href)
-}
-function importSave(file){
-  const r=new FileReader();r.onload=()=>{try{state=JSON.parse(r.result);state.lastRealTick=Date.now();bindSettings();renderAll();saveGame();toast('Partie importée.')}catch(e){toast('Fichier de sauvegarde invalide.')}};r.readAsText(file)
-}
-function exportData(){
-  const rows=[['Heure','Plaque','Durée (min)','Moyen','Montant EUR','Statut']];
-  state.transactions.forEach(t=>rows.push([t.time,t.plate,Math.floor(t.duration),t.method,t.amount.toFixed(2),t.status]));
-  const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='parking_transactions.csv';a.click();URL.revokeObjectURL(a.href)
-}
-function resetGame(){if(!confirm('Démarrer une nouvelle partie ?'))return;localStorage.removeItem('parkingManagerProSave');state=createInitialState();initGame()}
-
+function toggleSound(){state.sound=!state.sound;document.getElementById("soundBtn").textContent=`Sons : ${state.sound?"activés":"coupés"}`}
+function printReceipt(){const tx=getSelectedTransaction()||[...state.transactions].reverse().find(t=>t.status==="VALIDÉ");if(!tx)return toast("Aucun ticket disponible.");printTransactionReceipt(tx)}
+function saveGame(silent=false){localStorage.setItem("parkingManagerProSave",JSON.stringify(state));if(!silent)toast("Partie sauvegardée.")}
+function loadGame(){const raw=localStorage.getItem("parkingManagerProSave");if(!raw)return toast("Aucune sauvegarde.");state=JSON.parse(raw);state.lastRealTick=Date.now();ensureAdvancedState();bindSettings();document.getElementById("speedSelect").value=String(state.speed);renderAll();toast("Sauvegarde chargée.")}
+function exportSave(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="parking_manager_pro_v3.parking";a.click();URL.revokeObjectURL(a.href)}
+function importSave(file){const r=new FileReader();r.onload=()=>{try{state=JSON.parse(r.result);state.lastRealTick=Date.now();ensureAdvancedState();bindSettings();renderAll();saveGame(true);toast("Partie importée.")}catch(e){toast("Fichier de sauvegarde invalide.")}};r.readAsText(file)}
+function exportData(){const rows=[["Date","Heure","Ticket","Session","Plaque","Durée (min)","Moyen","Montant EUR","Statut","Motif"]];state.transactions.forEach(t=>rows.push([t.date||"",t.time,t.receiptNo||"",t.sessionId||"",t.plate,Math.floor(t.duration||0),t.method,Number(t.amount||0).toFixed(2),t.status,t.reason||""]));const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll("\"","\"\"")}"`).join(";")).join("\n"),blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="parking_transactions_v3.csv";a.click();URL.revokeObjectURL(a.href)}
+function resetGame(){if(!confirm("Démarrer une nouvelle partie ?"))return;localStorage.removeItem("parkingManagerProSave");state=createInitialState();initGame()}
 /* ================= VERSION INTÉGRALE : EXTENSIONS ================= */
 const _oldInitGame=initGame;
 initGame=function(){
@@ -1240,8 +1075,22 @@ function ensureAdvancedState(){
   const defaults={day:1,reputation:50,companyLevel:1,xp:0,difficulty:'normal',graceMinutes:5,maxHeight:2.05,
     dailyOperatingCost:180,electricityCost:0,contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,construction:[],fraudCount:0,collisions:0,
-    badParking:0,mixedPayment:null,refunds:[],kioskPayments:0};
+    badParking:0,mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
+    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide'};
   Object.entries(defaults).forEach(([k,v])=>{if(state[k]===undefined)state[k]=v});
+  state.version=3;
+  state.register={open:false,float:0,openedAt:null,agent:null,sessionId:null,closedAt:null,actualCash:null,difference:null,...(state.register||{})};
+  state.vehicles.forEach(v=>{
+    if(v.totalPaid===undefined)v.totalPaid=Number(v.paidAmount||0);
+    if(v.discount===undefined)v.discount=0;
+    if(v.inTransit===undefined)v.inTransit=false;
+    if(v.paid&&v.paidAt===null)v.paidAt=state.simTime;
+  });
+  state.transactions.forEach(t=>{
+    if(!t.date)t.date=simNow().toLocaleDateString('fr-FR');
+    if(!t.receiptNo)t.receiptNo=state.receiptCounter++;
+    if(!t.agent)t.agent='Ancienne session';
+  });
 }
 function createDefaultMissions(){
   if(state.missions.length)return;
@@ -1489,6 +1338,274 @@ function printFullReport(){
   w.document.write(`<div class="invoice"><h1>Rapport d’exploitation – Parking Manager Pro</h1><p>Jour ${state.day} • ${simNow().toLocaleString('fr-FR')}</p><table><tr><th>Chiffre d’affaires</th><td>${euro.format(state.revenue)}</td></tr><tr><th>Dépenses</th><td>${euro.format(state.expenses)}</td></tr><tr><th>Résultat net</th><td>${euro.format(profit)}</td></tr><tr><th>Entrées / sorties</th><td>${state.stats.entries} / ${state.stats.exits}</td></tr><tr><th>Satisfaction</th><td>${Math.round(state.stats.satisfaction)} %</td></tr><tr><th>Réputation</th><td>${Math.round(state.reputation)} / 100</td></tr><tr><th>Fraudes détectées</th><td>${state.fraudCount}</td></tr><tr><th>Accrochages</th><td>${state.collisions}</td></tr><tr><th>Véhicules mal stationnés</th><td>${state.badParking}</td></tr></table><h2>Transactions</h2><table><tr><th>Heure</th><th>Plaque</th><th>Moyen</th><th>Montant</th><th>Statut</th></tr>${state.transactions.map(t=>`<tr><td>${t.time}</td><td>${t.plate}</td><td>${t.method}</td><td>${euro.format(t.amount)}</td><td>${t.status}</td></tr>`).join('')}</table></div>`);
   w.document.close();w.print()
 }
+
+/* ================= CAISSE ET CIRCULATION V3 ================= */
+function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+function getCashVehicles(){return state.vehicles.filter(v=>['parked','driving-to-exit','waiting-exit'].includes(v.status))}
+function getCashVehicle(){
+  const selected=state.vehicles.find(v=>v.id===state.selectedCashVehicleId&&getCashVehicles().includes(v));
+  if(selected)return selected;
+  if(state.currentExit){state.selectedCashVehicleId=state.currentExit.id;return state.currentExit}
+  const first=getCashVehicles()[0]||null;if(first)state.selectedCashVehicleId=first.id;return first
+}
+function selectCashVehicle(id){state.selectedCashVehicleId=Number(id);renderCash()}
+function getSelectedTransaction(){return state.transactions.find(t=>String(t.id)===String(state.selectedTransactionId))||null}
+function selectTransaction(id){state.selectedTransactionId=String(id);renderHistory()}
+function vehicleTotalPaid(v){return Number(v?.totalPaid||0)}
+amountDue=function(v){return !v?0:Math.max(0,Number((feeFor(v)-Number(v.discount||0)-vehicleTotalPaid(v)).toFixed(2)))}
+function currentSessionTransactions(){return state.register.sessionId?state.transactions.filter(t=>t.sessionId===state.register.sessionId):[]}
+function transactionAmountFor(t,method){
+  if(t.status!=='VALIDÉ')return 0;
+  if(t.method===method)return Number(t.amount||0);
+  if(t.method==='MIXTE')return Number(t.allocations?.[method]||0);
+  return 0
+}
+sumTransactions=function(method,sessionOnly=true){
+  const source=sessionOnly?currentSessionTransactions():state.transactions;
+  return source.reduce((n,t)=>n+transactionAmountFor(t,method),0)
+}
+function sessionRefundTotal(){return currentSessionTransactions().filter(t=>['REMBOURSÉ','ANNULÉ'].includes(t.status)).reduce((n,t)=>n+Number(t.amount||0),0)}
+function sessionRevenue(){return currentSessionTransactions().filter(t=>t.status==='VALIDÉ').reduce((n,t)=>n+Number(t.amount||0),0)}
+function createTransaction(v,method,amount,extra={}){
+  const tx={
+    id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),
+    receiptNo:state.receiptCounter++,date:simNow().toLocaleDateString('fr-FR'),
+    time:simNow().toLocaleTimeString('fr-FR'),timestamp:state.simTime,plate:v.plate,
+    vehicleId:v.id,duration:durationMinutes(v),method,amount:Number(amount.toFixed(2)),
+    status:'VALIDÉ',agent:state.register.agent||extra.agent||'Borne automatique',
+    sessionId:state.register.open?state.register.sessionId:null,reason:extra.reason||'',
+    allocations:extra.allocations||null
+  };
+  state.transactions.push(tx);state.selectedTransactionId=String(tx.id);v.receiptNo=tx.receiptNo;return tx
+}
+payCurrent=function(method,amountOverride=null,extra={}){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule sélectionné.');
+  if(!state.register.open&&!['SUBSCRIPTION','GRATUITÉ','KIOSK'].includes(method))return toast('Ouvrez d’abord une session de caisse.');
+  if(v.paid&&amountDue(v)<=0)return toast('Ce véhicule est déjà entièrement réglé.');
+  const due=amountDue(v),amount=Number((amountOverride??due).toFixed(2));
+  if(amount<0||amount>due+.001)return toast('Montant de paiement invalide.');
+  if(['CB','CONTACTLESS'].includes(method)&&Math.random()<.05)return toast('Paiement refusé par le terminal.');
+  createTransaction(v,method,amount,extra);
+  v.totalPaid=Number((vehicleTotalPaid(v)+amount).toFixed(2));v.paidAmount=v.totalPaid;
+  v.paymentMethod=method;v.paid=amountDue(v)<=.001;
+  if(v.paid){v.paidAt=state.simTime;v.frozenFee=feeFor(v);gainXP(10)}
+  state.revenue+=amount;state.budget+=amount;
+  logEvent(`${v.plate} : ${euro.format(amount)} encaissés par ${method}.`,'good');
+  beep(1040,.1);toast(v.paid?`Paiement terminé : ${euro.format(amount)}`:`Acompte enregistré : ${euro.format(amount)}`);renderAll();return true
+}
+function openCashRegister(){
+  if(state.register.open)return toast('La caisse est déjà ouverte.');
+  const agent=document.getElementById('cashierName').value.trim()||'Superviseur';
+  const opening=Number(document.getElementById('openingFloatInput').value);
+  if(!Number.isFinite(opening)||opening<0)return toast('Fond de caisse invalide.');
+  const sessionId=`J${state.day}-${String(state.registerSessions.length+1).padStart(2,'0')}`;
+  state.register={open:true,float:opening,openedAt:state.simTime,agent,sessionId,closedAt:null,actualCash:null,difference:null};
+  logEvent(`Caisse ${sessionId} ouverte par ${agent} avec ${euro.format(opening)}.`,'good');renderAll()
+}
+function closeCashRegister(){
+  if(!state.register.open)return toast('La caisse est déjà fermée.');
+  const expected=state.register.float+sumTransactions('CASH');
+  document.getElementById('closingExpected').textContent=euro.format(expected);
+  document.getElementById('closingActualInput').value=expected.toFixed(2);updateClosingDifference();openModal('closingModal')
+}
+function updateClosingDifference(){
+  const expected=state.register.float+sumTransactions('CASH'),actual=Number(document.getElementById('closingActualInput').value||0),difference=actual-expected;
+  document.getElementById('closingCounted').textContent=euro.format(actual);
+  document.getElementById('closingDifference').textContent=euro.format(difference);
+  document.getElementById('closingDifference').style.color=Math.abs(difference)<.01?'var(--green)':'var(--red)'
+}
+function confirmCashClosure(){
+  const expected=state.register.float+sumTransactions('CASH'),actual=Number(document.getElementById('closingActualInput').value);
+  if(!Number.isFinite(actual)||actual<0)return toast('Montant compté invalide.');
+  const snapshot={...state.register,closedAt:state.simTime,actualCash:actual,difference:Number((actual-expected).toFixed(2)),cb:sumTransactions('CB'),cash:sumTransactions('CASH'),contactless:sumTransactions('CONTACTLESS'),kiosk:sumTransactions('KIOSK'),revenue:sessionRevenue()};
+  state.registerSessions.push(snapshot);state.register={...snapshot,open:false};closeModal('closingModal');
+  logEvent(`Caisse ${snapshot.sessionId} clôturée avec un écart de ${euro.format(snapshot.difference)}.`,Math.abs(snapshot.difference)<.01?'good':'warn');renderAll()
+}
+function openCashPayment(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  if(!state.register.open)return toast('Ouvrez d’abord la caisse.');
+  const due=amountDue(v);if(due<=0)return toast('Aucun montant restant à payer.');
+  document.getElementById('cashModalDue').textContent=euro.format(due);
+  document.getElementById('cashReceivedInput').value='';updateCashChange();openModal('cashModal')
+}
+function setCashReceived(value){const v=getCashVehicle();document.getElementById('cashReceivedInput').value=value==='EXACT'?amountDue(v).toFixed(2):value;updateCashChange()}
+function updateCashChange(){
+  const due=amountDue(getCashVehicle()),received=Number(document.getElementById('cashReceivedInput').value||0);
+  document.getElementById('cashModalReceived').textContent=euro.format(received);
+  document.getElementById('cashModalChange').textContent=received>=due?euro.format(received-due):`Manque ${euro.format(due-received)}`
+}
+function confirmCashPayment(){
+  const v=getCashVehicle(),due=amountDue(v),received=Number(document.getElementById('cashReceivedInput').value||0);
+  if(received<due)return toast('Montant reçu insuffisant.');
+  if(payCurrent('CASH',due,{received,change:received-due})){closeModal('cashModal');toast(`Monnaie rendue : ${euro.format(received-due)}`)}
+}
+function openMixedPayment(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  if(!state.register.open)return toast('Ouvrez d’abord la caisse.');
+  const due=amountDue(v);if(due<=0)return toast('Aucun montant restant à payer.');
+  document.getElementById('mixedDue').textContent=euro.format(due);document.getElementById('mixedCashInput').value=(due/2).toFixed(2);updateMixedPayment();openModal('mixedModal')
+}
+function updateMixedPayment(){
+  const due=amountDue(getCashVehicle()),cash=Math.max(0,Number(document.getElementById('mixedCashInput').value||0)),card=Math.max(0,due-cash);
+  document.getElementById('mixedCashDisplay').textContent=euro.format(cash);document.getElementById('mixedCardDisplay').textContent=euro.format(card)
+}
+function confirmMixedPayment(){
+  const due=amountDue(getCashVehicle()),cash=Number(document.getElementById('mixedCashInput').value||0);
+  if(!Number.isFinite(cash)||cash<0||cash>due)return toast('Répartition invalide.');
+  const card=Number((due-cash).toFixed(2));
+  if(payCurrent('MIXTE',due,{allocations:{CASH:cash,CB:card}}))closeModal('mixedModal')
+}
+function partialPayment(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  const due=amountDue(v),part=Number(prompt(`Reste dû ${euro.format(due)}. Montant de l’acompte :`,'1'));
+  if(!Number.isFinite(part)||part<=0||part>=due)return toast('Montant partiel invalide.');
+  payCurrent('CASH',part,{reason:'Acompte'})
+}
+function validateSubscription(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  v.subscription=true;v.discount=feeFor(v);v.discountReason='Abonnement vérifié';v.paid=true;v.paidAt=state.simTime;
+  createTransaction(v,'SUBSCRIPTION',0,{reason:'Abonnement vérifié'});logEvent(`Abonnement validé pour ${v.plate}.`,'good');renderAll()
+}
+function toggleLostTicket(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  if(v.paid)return toast('Le règlement est déjà terminé.');
+  v.lostTicket=!v.lostTicket;logEvent(`${v.plate} : ticket perdu ${v.lostTicket?'activé':'annulé'}.`,'warn');renderAll()
+}
+function applyDiscount(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule sélectionné.');
+  if(v.paid)return toast('Le paiement est déjà terminé.');
+  const maximum=Math.max(0,feeFor(v)-vehicleTotalPaid(v)),value=Number(prompt(`Montant maximal : ${euro.format(maximum)}`,'0.50'));
+  if(!Number.isFinite(value)||value<0||value>maximum)return toast('Montant de remise invalide.');
+  const reason=prompt('Motif obligatoire de la remise','Geste commercial');if(!reason?.trim())return toast('Le motif est obligatoire.');
+  v.discount=Number(value.toFixed(2));v.discountReason=reason.trim();v.paid=amountDue(v)<=.001;if(v.paid)v.paidAt=state.simTime;
+  logEvent(`Remise de ${euro.format(v.discount)} sur ${v.plate} : ${v.discountReason}.`,'warn');renderAll()
+}
+function grantFreePass(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  if(v.paid)return toast('Le véhicule est déjà réglé.');
+  const reason=prompt('Motif obligatoire de la gratuité','Incident technique');if(!reason?.trim())return;
+  v.discount=Math.max(0,feeFor(v)-vehicleTotalPaid(v));v.discountReason=reason.trim();v.paid=true;v.paidAt=state.simTime;
+  createTransaction(v,'GRATUITÉ',0,{reason:v.discountReason});logEvent(`Gratuité accordée à ${v.plate} : ${v.discountReason}.`,'warn');renderAll()
+}
+function reverseTransaction(tx,status){
+  if(!tx||tx.status!=='VALIDÉ')return toast('Cette transaction ne peut pas être modifiée.');
+  const v=state.vehicles.find(x=>x.id===tx.vehicleId);
+  tx.status=status;tx.reversedAt=state.simTime;state.revenue-=Number(tx.amount||0);state.budget-=Number(tx.amount||0);
+  if(v){v.totalPaid=Math.max(0,vehicleTotalPaid(v)-Number(tx.amount||0));v.paidAmount=v.totalPaid;v.paid=amountDue(v)<=.001;if(!v.paid)v.paidAt=null}
+  logEvent(`${status==='REMBOURSÉ'?'Remboursement':'Annulation'} du ticket ${tx.receiptNo} (${tx.plate}).`,'warn');renderAll()
+}
+function cancelCurrentPayment(){
+  const v=getCashVehicle();if(!v)return toast('Aucun véhicule.');
+  const tx=[...state.transactions].reverse().find(t=>t.vehicleId===v.id&&t.status==='VALIDÉ');
+  if(!tx)return toast('Aucun règlement à annuler.');
+  if(!confirm(`Annuler le ticket n° ${tx.receiptNo} de ${euro.format(tx.amount)} ?`))return;
+  reverseTransaction(tx,'ANNULÉ')
+}
+function refundTransaction(){
+  const tx=getSelectedTransaction();if(!tx)return toast('Sélectionnez une transaction.');
+  if(!confirm(`Rembourser le ticket n° ${tx.receiptNo} de ${euro.format(tx.amount)} ?`))return;
+  reverseTransaction(tx,'REMBOURSÉ')
+}
+function voidTransaction(){
+  const tx=getSelectedTransaction();if(!tx)return toast('Sélectionnez une transaction.');
+  const v=state.vehicles.find(x=>x.id===tx.vehicleId);
+  if(!v||v.status==='exited')return toast('Une transaction d’un véhicule déjà sorti doit être remboursée.');
+  if(!confirm(`Annuler la transaction n° ${tx.receiptNo} ?`))return;reverseTransaction(tx,'ANNULÉ')
+}
+function printTransactionReceipt(tx){
+  const w=window.open('','_blank','width=430,height=650');if(!w)return toast('La fenêtre d’impression a été bloquée.');
+  const detail=tx.allocations?`Espèces : ${euro.format(tx.allocations.CASH||0)}\\nCarte : ${euro.format(tx.allocations.CB||0)}\\n`:'';
+  w.document.write(`<pre style="font:15px ui-monospace,monospace;white-space:pre-wrap;padding:28px">PARKING MANAGER PRO V3\nTicket n° ${escapeHTML(tx.receiptNo)}\nDate : ${escapeHTML(tx.date)} ${escapeHTML(tx.time)}\nPlaque : ${escapeHTML(tx.plate)}\nDurée : ${Math.floor(tx.duration||0)} min\nMoyen : ${escapeHTML(tx.method)}\n${detail}Total encaissé : ${euro.format(tx.amount)}\nStatut : ${escapeHTML(tx.status)}\nAgent : ${escapeHTML(tx.agent)}\n\nMerci de votre visite.</pre>`);w.document.close();w.print()
+}
+function duplicateReceipt(){const tx=getSelectedTransaction()||[...state.transactions].reverse().find(t=>t.status==='VALIDÉ');if(!tx)return toast('Aucun ticket.');printTransactionReceipt(tx)}
+function renderCash(){
+  ensureAdvancedState();const list=document.getElementById('cashVehicleList');if(!list)return;
+  const search=(document.getElementById('cashSearch').value||'').toUpperCase().trim(),vehicles=getCashVehicles().filter(v=>v.plate.includes(search));
+  list.innerHTML=vehicles.length?'':'<div class="section" style="color:var(--muted)">Aucun véhicule correspondant.</div>';
+  vehicles.forEach(v=>{
+    const b=document.createElement('button');b.className=`cash-vehicle${v.id===state.selectedCashVehicleId?' active':''}`;b.onclick=()=>selectCashVehicle(v.id);
+    b.innerHTML=`<span><strong>${escapeHTML(v.plate)}</strong><br><small>${escapeHTML(v.floor||'—')} • ${Math.floor(durationMinutes(v))} min • ${v.status==='waiting-exit'?'à la sortie':'stationné'}</small></span><span class="amount">${v.paid?'PAYÉ':euro.format(amountDue(v))}</span>`;list.appendChild(b)
+  });
+  const v=getCashVehicle(),fee=v?feeFor(v):0,due=v?amountDue(v):0,paid=v?vehicleTotalPaid(v):0;
+  document.getElementById('cashPlate').textContent=v?v.plate:'—';
+  document.getElementById('cashVehicleStatus').textContent=v?`${v.type==='bus'?'Bus':'Voiture'} • niveau ${v.floor||'—'} • place ${v.spaceId||'—'}`:'Sélectionnez un véhicule';
+  document.getElementById('cashEntry').textContent=v?new Date(v.entryAt).toLocaleTimeString('fr-FR'):'—';
+  document.getElementById('cashDuration').textContent=v?`${Math.floor(durationMinutes(v))} min`:'—';
+  document.getElementById('cashRate').textContent=v?(v.lostTicket?'Forfait ticket perdu':v.subscription?'Abonnement':`${v.type==='bus'?'Bus':'Voiture'} • ${state.rates.freeMinutes} min gratuites`):'—';
+  document.getElementById('cashGross').textContent=euro.format(fee);document.getElementById('cashDiscount').textContent=euro.format(v?.discount||0);
+  document.getElementById('cashPaid').textContent=euro.format(paid);document.getElementById('cashTotal').textContent=euro.format(due);
+  const paymentState=document.getElementById('cashPaymentState');paymentState.textContent=v?(v.paid?'PAYÉ':due<=0?'GRATUIT':'À ENCAISSER'):'EN ATTENTE';paymentState.className=`status-pill ${v?.paid||due<=0?'good':'warn'}`;
+  let grace='—';if(v?.paidAt){const remaining=Math.ceil(state.graceMinutes-(state.simTime-v.paidAt)/60000);grace=remaining>=0?`${remaining} min restantes`:'Délai dépassé'}document.getElementById('cashGrace').textContent=grace;
+  document.getElementById('cashClock').textContent=simNow().toLocaleString('fr-FR');
+  const open=state.register.open;document.getElementById('registerStatus').textContent=open?'Ouverte':'Fermée';document.getElementById('registerStatus').className=`register-state${open?' open':''}`;
+  document.getElementById('registerSession').textContent=state.register.sessionId||'—';document.getElementById('cashFloat').textContent=euro.format(state.register.float||0);
+  document.getElementById('sumCB').textContent=euro.format(sumTransactions('CB'));document.getElementById('sumCash').textContent=euro.format(sumTransactions('CASH'));
+  document.getElementById('sumContactless').textContent=euro.format(sumTransactions('CONTACTLESS'));document.getElementById('sumKiosk').textContent=euro.format(sumTransactions('KIOSK'));
+  document.getElementById('sumRefunds').textContent=euro.format(sessionRefundTotal());document.getElementById('sumSession').textContent=euro.format(sessionRevenue());
+  document.getElementById('cashierName').disabled=open;document.getElementById('openingFloatInput').disabled=open
+}
+function renderHistory(){
+  const body=document.getElementById('historyBody');if(!body)return;
+  const search=(document.getElementById('historySearch')?.value||'').toUpperCase(),method=document.getElementById('historyMethod')?.value||'',status=document.getElementById('historyStatus')?.value||'';
+  const rows=[...state.transactions].reverse().filter(t=>(!search||String(t.plate).includes(search)||String(t.receiptNo).includes(search))&&(!method||t.method===method)&&(!status||t.status===status));
+  body.innerHTML='';rows.forEach(t=>body.insertAdjacentHTML('beforeend',`<tr class="transaction-row ${String(t.id)===String(state.selectedTransactionId)?'selected':''}" onclick="selectTransaction('${escapeHTML(t.id)}')"><td>n° ${escapeHTML(t.receiptNo||'—')}</td><td>${escapeHTML(t.date||'')} ${escapeHTML(t.time)}</td><td>${escapeHTML(t.plate)}</td><td>${Math.floor(t.duration||0)} min</td><td>${escapeHTML(t.method)}</td><td>${euro.format(t.amount||0)}</td><td>${escapeHTML(t.agent||'—')}</td><td><span class="status-pill ${t.status==='VALIDÉ'?'good':t.status==='REMBOURSÉ'?'warn':'bad'}">${escapeHTML(t.status)}</span></td></tr>`));
+  document.getElementById('historyCount').textContent=`${rows.length} opération${rows.length>1?'s':''}`
+}
+function updateRouteStatus(text,type='good'){
+  state.routeMessage=text;const e=document.getElementById('vehicleRouteStatus');if(e){e.textContent=text;e.style.color=type==='warn'?'var(--amber)':'var(--muted)'}
+}
+function animateVehicleJourney(v,stage){
+  if(!v)return;const layer=document.getElementById('routeLayer');if(!layer)return;
+  const target=document.querySelector(`[data-space-id="${CSS.escape(v.spaceId||'')}"]`),lr=layer.getBoundingClientRect();
+  const pointOf=el=>{if(!el)return{x:lr.width*.52,y:lr.height*.28};const r=el.getBoundingClientRect();return{x:r.left-lr.left+r.width/2-21,y:r.top-lr.top+r.height/2-11}};
+  const p=pointOf(target),w=lr.width,h=lr.height,d=document.createElement('div');d.className=`moving-vehicle${v.type==='bus'?' bus-route':''}`;d.style.background=v.color;d.innerHTML=`<span class="route-plate">${escapeHTML(v.plate)}</span>`;layer.appendChild(d);
+  let frames,duration=2700;
+  if(stage==='to-space'){frames=[{x:-60,y:h-42,r:0},{x:w*.43,y:h-42,r:0},{x:w*.43,y:p.y,r:-90},{x:p.x,y:p.y,r:0}];updateRouteStatus(`${v.plate} se dirige vers la place ${v.spaceId}`)}
+  else if(stage==='to-exit'){frames=[{x:p.x,y:p.y,r:180},{x:w*.57,y:p.y,r:180},{x:w*.57,y:h-45,r:90},{x:w-48,y:h-45,r:0}];updateRouteStatus(`${v.plate} rejoint la voie de sortie`)}
+  else{frames=[{x:w-55,y:h-45,r:0},{x:w*.75,y:h-45,r:0},{x:w+90,y:h-45,r:0}];duration=1500;updateRouteStatus(`${v.plate} franchit la sortie`)}
+  d.animate(frames.map((f,i)=>({transform:`translate(${f.x}px,${f.y}px) rotate(${f.r}deg)`,offset:i/(frames.length-1)})),{duration,easing:'ease-in-out',fill:'forwards'}).finished.finally(()=>{d.remove();updateRouteStatus('Circulation fluide')})
+}
+occupiedVehicles=function(){return state.vehicles.filter(v=>['parked','driving-to-space','driving-to-exit','waiting-exit'].includes(v.status))}
+openEntry=function(){
+  const v=state.currentEntry;if(!v)return toast('Aucun véhicule à l’entrée.');
+  if(computedStatus()==='CLOSED')return toast('Le parking est fermé.');
+  if(state.equipment.entryGate<=0||state.equipment.anpr<=0)return toast('Équipement d’entrée hors service.');
+  if(v.anprConfidence<80)return toast('Plaque à corriger avant autorisation.');
+  if(v.blacklisted)return toast('ALERTE : plaque inscrite sur liste noire.');
+  if(v.height>state.maxHeight&&!v.emergency)return toast(`Véhicule trop haut : ${v.height} m.`);
+  const slot=availableSpace(v);if(!slot)return toast('Aucune place compatible disponible.');
+  v.entryAt=state.simTime;v.parkedAt=state.simTime;v.floor=slot.floor.name;v.spaceId=slot.space.id;v.status='driving-to-space';v.inTransit=true;
+  slot.space.status='occupied';slot.space.vehicleId=v.id;state.selectedFloor=state.floors.indexOf(slot.floor);
+  state.stats.entries++;state.stats.waitTotal+=(state.simTime-v.arrivalAt)/1000;state.stats.waitCount++;state.trafficByHour[simNow().getHours()]++;
+  setGate('entry',true);beep(880,.08);logEvent(`${v.plate} admis et guidé vers ${v.spaceId}.`,'good');
+  state.currentEntry=null;refreshCurrentEntry();renderAll();setTimeout(()=>animateVehicleJourney(v,'to-space'),30);
+  setTimeout(()=>{v.status='parked';v.inTransit=false;renderAll()},2750);setTimeout(()=>setGate('entry',false),900)
+}
+requestExit=function(v){
+  if(!v||v.status!=='parked')return;
+  v.status='driving-to-exit';v.inTransit=true;v.exitRequestAt=state.simTime;state.selectedFloor=Math.max(0,state.floors.findIndex(f=>f.name===v.floor));
+  logEvent(`${v.plate} quitte ${v.spaceId} et rejoint la sortie.`);renderAll();setTimeout(()=>animateVehicleJourney(v,'to-exit'),30);
+  setTimeout(()=>{v.status='waiting-exit';v.inTransit=false;state.exitQueue.push(v);refreshCurrentExit();if(!state.selectedCashVehicleId)state.selectedCashVehicleId=v.id;renderAll()},2750)
+}
+openExit=function(override=false){
+  const v=state.currentExit;if(!v)return toast('Aucun véhicule à la sortie.');
+  if(state.equipment.exitGate<=0)return toast('Barrière de sortie hors service.');
+  const due=amountDue(v);
+  if(due>0&&!override)return toast(`Paiement requis : ${euro.format(due)}.`);
+  if(override){const reason=prompt('Motif obligatoire de la dérogation','Incident de paiement');if(!reason?.trim())return;v.overrideReason=reason.trim();state.stats.satisfaction=Math.max(0,state.stats.satisfaction-2);logEvent(`Dérogation pour ${v.plate} : ${v.overrideReason}.`,'warn')}
+  if(v.fraudRisk&&Math.random()<.35&&!override){state.fraudCount++;triggerSpecificAlert(`Tentative de fraude détectée derrière ${v.plate}.`);return}
+  setGate('exit',true);beep(880,.08);v.status='exited';state.stats.exits++;if(durationMinutes(v)>10)state.stats.overstays++;freeSpaceOf(v);
+  state.selectedFloor=Math.max(0,state.floors.findIndex(f=>f.name===v.floor));renderAll();setTimeout(()=>animateVehicleJourney(v,'leave'),30);
+  logEvent(`${v.plate} est sorti du parking.`,'good');state.currentExit=null;state.selectedCashVehicleId=null;refreshCurrentExit();setTimeout(()=>{setGate('exit',false);renderAll()},1550);checkMissions()
+}
+payAtKiosk=function(id){
+  const v=state.vehicles.find(x=>x.id===id);if(!v)return;if(v.paid)return toast('Stationnement déjà payé.');
+  state.selectedCashVehicleId=v.id;const amount=amountDue(v),oldOpen=state.register.open;
+  if(!oldOpen)state.register.open=true;
+  const ok=payCurrent('KIOSK',amount,{agent:'Borne automatique'});
+  if(!oldOpen)state.register.open=false;if(ok){state.kioskPayments++;renderAll()}
+}
+openPayment=function(){if(state.currentExit)state.selectedCashVehicleId=state.currentExit.id;switchView('cash')}
 function showKeyboardHelp(){alert('RACCOURCIS CLAVIER\\n\\nE : ouvrir l’entrée\\nS : ouvrir la sortie\\nP : encaisser\\nA : nouvelle arrivée\\nEspace : pause / reprise\\n1 à 5 : changer de vue\\nR : rapport imprimable')}
 document.addEventListener('keydown',e=>{
   if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))return;
@@ -1498,19 +1615,13 @@ document.addEventListener('keydown',e=>{
   else if(k==='r')printFullReport();else if(['1','2','3','4','5','6'].includes(k)){const ids=['operations','cash','staff','stats','management','settings'];switchView(ids[Number(k)-1])}
 });
 setInterval(advancedSimulation,1000);
-setTimeout(()=>{
-  const cashButtons=document.querySelector('#cash .grid3');
-  if(cashButtons){
-    cashButtons.insertAdjacentHTML('beforeend','<button onclick="mixedPayment()" class="secondary">Paiement mixte</button><button onclick="partialPayment()" class="warning">Paiement partiel</button><button onclick="refundTransaction()" class="danger">Rembourser</button><button onclick="duplicateReceipt()" class="secondary">Duplicata</button>');
-  }
-},0);
 
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 document.getElementById('openEntryBtn').onclick=openEntry;document.getElementById('editPlateBtn').onclick=editPlate;document.getElementById('refuseEntryBtn').onclick=refuseEntry;document.getElementById('manualArrivalBtn').onclick=()=>addArrival();
 document.getElementById('payExitBtn').onclick=openPayment;document.getElementById('openExitBtn').onclick=()=>openExit(false);document.getElementById('overrideExitBtn').onclick=()=>openExit(true);
 document.getElementById('speedSelect').onchange=e=>{state.speed=Number(e.target.value);toast(state.speed===0?'Simulation en pause':`Vitesse x${state.speed}`)};
 document.getElementById('cashReceivedInput').oninput=updateCashChange;document.getElementById('importSaveInput').onchange=e=>e.target.files[0]&&importSave(e.target.files[0]);
-setInterval(()=>{advanceTime();simulateTraffic();renderAll()},1000);setInterval(saveGame,30000);
+setInterval(()=>{advanceTime();simulateTraffic();renderAll()},1000);setInterval(()=>saveGame(true),30000);
 initGame();document.getElementById('speedSelect').value=String(state.speed);setTimeout(()=>addArrival(),1000)
 </script>
 </body>
