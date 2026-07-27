@@ -160,6 +160,17 @@ main{padding:14px;min-width:0}
 .moving-vehicle .route-plate{position:absolute;left:50%;top:-14px;transform:translateX(-50%);white-space:nowrap;background:#071016;color:#fff;border:1px solid #405867;border-radius:5px;padding:2px 4px;font-size:8px}
 .route-trail{position:absolute;height:3px;background:linear-gradient(90deg,transparent,var(--mint),transparent);opacity:.38;border-radius:999px;transform-origin:left center;z-index:3}
 .space.arriving{animation:spacePulse 1s ease-in-out infinite}
+.cash-barrier-card{border-color:#3d5967;background:linear-gradient(180deg,#13232c,#0d171e)}
+.cash-barrier-camera{height:92px;margin-top:10px}
+.cash-barrier-camera .vehicle-card{grid-template-columns:52px 1fr;padding:8px}
+.cash-barrier-camera .vehicle-icon{height:37px}
+.cash-barrier-traffic{grid-template-columns:34px 1fr;gap:9px}
+.cash-barrier-traffic .light{width:31px;height:76px;padding:7px}
+.cash-barrier-traffic .bulb{width:16px;height:16px}
+.cash-barrier-traffic .gate-wrap{height:68px}
+.cash-barrier-traffic .gate-post{height:45px}
+.cash-barrier-traffic .gate-arm{width:145px;bottom:41px}
+.cash-barrier-status{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 9px;border-radius:10px;background:#091218;border:1px solid #2d424e;font-size:11px}
 @keyframes spacePulse{50%{box-shadow:0 0 0 4px rgba(120,224,193,.18);border-color:var(--mint)}}
 @media(max-width:1250px){.cash-workspace{grid-template-columns:250px 1fr}.cash-sidebar{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 @media(max-width:800px){.cash-workspace{grid-template-columns:1fr}.cash-sidebar{grid-template-columns:1fr}.cash-filters{grid-template-columns:1fr}.payment-grid{grid-template-columns:repeat(2,1fr)}}
@@ -389,6 +400,36 @@ main{padding:14px;min-width:0}
         </div>
 
         <div class="stack cash-sidebar">
+          <div class="section cash-barrier-card">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <h3 style="margin:0">Sortie en direct</h3>
+              <span class="status-pill" id="cashExitPaymentState">AUCUN VÉHICULE</span>
+            </div>
+            <div class="camera-feed cash-barrier-camera">
+              <div class="vehicle-card">
+                <div class="vehicle-icon" id="cashExitVehicleIcon"></div>
+                <div>
+                  <div class="plate" id="cashExitPlate">—</div>
+                  <div class="confidence" id="cashExitInfo">Voie libre</div>
+                </div>
+              </div>
+            </div>
+            <div class="traffic cash-barrier-traffic" style="margin-top:9px">
+              <div class="light"><div class="bulb red on" id="cashExitRed"></div><div class="bulb green" id="cashExitGreen"></div></div>
+              <div class="gate-wrap"><div class="gate-post"></div><div class="gate-arm" id="cashExitGate"></div></div>
+            </div>
+            <div class="cash-barrier-status" style="margin-top:9px">
+              <span id="cashExitQueue">0 véhicule en attente</span>
+              <strong id="cashExitDue">—</strong>
+            </div>
+            <div class="control-row" style="margin-top:9px">
+              <button class="small secondary" id="cashSelectExitBtn" onclick="selectCurrentExitForCash()">Sélectionner</button>
+              <button class="small success" id="cashOpenExitBtn" onclick="openCashBarrier(false)">Ouvrir</button>
+              <button class="small warning" id="cashOverrideExitBtn" onclick="openCashBarrier(true)">Dérogation</button>
+              <button class="small danger" id="cashCloseExitBtn" onclick="closeCashBarrier()">Fermer</button>
+            </div>
+          </div>
+
           <div class="section">
             <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
               <h3 style="margin:0">Session de caisse</h3>
@@ -558,7 +599,7 @@ main{padding:14px;min-width:0}
       <label><span class="label">Tarif bus jusqu'à 10 minutes</span><input id="settingBaseBus" type="number" min="0" step="0.5"></label>
       <label><span class="label">Tarif ticket perdu</span><input id="settingLostTicket" type="number" min="0" step="1"></label>
       <label><span class="label">Délai de grâce après paiement (minutes)</span><input id="settingGrace" type="number" min="0"></label>
-      <label><span class="label">Hauteur maximale voitures (m)</span><input id="settingMaxHeight" type="number" min="1" step="0.05"></label>
+      <div class="section"><div class="cash-line"><span>Contrôle de hauteur</span><span class="status-pill good">Désactivé</span></div><div style="color:var(--muted);font-size:11px;margin-top:5px">Les voitures et les bus peuvent entrer. Les bus sont dirigés vers leurs emplacements dédiés.</div></div>
       <label><span class="label">Difficulté</span><select id="settingDifficulty"><option value="easy">Facile</option><option value="normal">Normal</option><option value="hard">Difficile</option></select></label>
       <button onclick="saveSettings()">Enregistrer les tarifs</button>
     </div>
@@ -675,7 +716,7 @@ function createInitialState(){
     goals:{revenue:250,entries:30,satisfaction:85,maxWait:180},
     expenses:0,trafficByHour:Array(24).fill(0),
     day:1,reputation:50,companyLevel:1,xp:0,difficulty:'normal',
-    graceMinutes:5,maxHeight:2.05,dailyOperatingCost:180,electricityCost:0,
+    graceMinutes:5,maxHeight:99,dailyOperatingCost:180,electricityCost:0,
     contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,
     construction:[],fraudCount:0,collisions:0,badParking:0,
@@ -862,7 +903,16 @@ function freeSpaceOf(v){
   const list=v.type==='bus'?floor.busSpaces:floor.spaces;const s=list.find(x=>x.id===v.spaceId);
   if(s){s.status='free';s.vehicleId=null}
 }
-function setGate(kind,open){document.getElementById(kind+'Gate').classList.toggle('open',open);document.getElementById(kind+'Red').classList.toggle('on',!open);document.getElementById(kind+'Green').classList.toggle('on',open)}
+function setGate(kind,open){
+  document.getElementById(kind+'Gate').classList.toggle('open',open);
+  document.getElementById(kind+'Red').classList.toggle('on',!open);
+  document.getElementById(kind+'Green').classList.toggle('on',open);
+  if(kind==='exit'){
+    document.getElementById('cashExitGate')?.classList.toggle('open',open);
+    document.getElementById('cashExitRed')?.classList.toggle('on',!open);
+    document.getElementById('cashExitGreen')?.classList.toggle('on',open)
+  }
+}
 function occupiedVehicles(){return state.vehicles.filter(v=>['parked','waiting-exit'].includes(v.status))}
 function totalCapacity(type){return state.floors.reduce((n,f)=>n+(type==='bus'?f.busSpaces.length:f.spaces.length),0)}
 function freeCount(type){return state.floors.reduce((n,f)=>n+(f.closed?0:(type==='bus'?f.busSpaces:f.spaces).filter(s=>s.status==='free').length),0)}
@@ -1072,7 +1122,7 @@ initGame=function(){
   renderAll();
 };
 function ensureAdvancedState(){
-  const defaults={day:1,reputation:50,companyLevel:1,xp:0,difficulty:'normal',graceMinutes:5,maxHeight:2.05,
+  const defaults={day:1,reputation:50,companyLevel:1,xp:0,difficulty:'normal',graceMinutes:5,maxHeight:99,
     dailyOperatingCost:180,electricityCost:0,contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,construction:[],fraudCount:0,collisions:0,
     badParking:0,mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
@@ -1113,7 +1163,6 @@ openEntry=function(){
   const v=state.currentEntry;
   if(v){
     if(v.blacklisted)return toast('ALERTE : plaque inscrite sur liste noire. Entrée bloquée.');
-    if(v.height>state.maxHeight&&!v.emergency)return toast(`Véhicule trop haut : ${v.height} m pour une limite de ${state.maxHeight} m.`);
     if(v.emergency){v.priority=true;logEvent(`Véhicule prioritaire ${v.plate} : passage immédiat demandé.`,'warn')}
   }
   _oldOpenEntry();
@@ -1324,11 +1373,11 @@ function renderPedestrians(){
 const _oldRenderAll=renderAll;
 renderAll=function(){_oldRenderAll();renderAdvanced()}
 const _oldBindSettings=bindSettings;
-bindSettings=function(){_oldBindSettings();ensureAdvancedState();const g=document.getElementById('settingGrace'),h=document.getElementById('settingMaxHeight'),d=document.getElementById('settingDifficulty');if(g)g.value=state.graceMinutes;if(h)h.value=state.maxHeight;if(d)d.value=state.difficulty}
+bindSettings=function(){_oldBindSettings();ensureAdvancedState();const g=document.getElementById('settingGrace'),d=document.getElementById('settingDifficulty');if(g)g.value=state.graceMinutes;if(d)d.value=state.difficulty}
 const _oldSaveSettings=saveSettings;
 saveSettings=function(){
   state.graceMinutes=Number(document.getElementById('settingGrace').value||5);
-  state.maxHeight=Number(document.getElementById('settingMaxHeight').value||2.05);
+  state.maxHeight=99;
   state.difficulty=document.getElementById('settingDifficulty').value;
   _oldSaveSettings()
 }
@@ -1542,8 +1591,21 @@ function renderCash(){
   document.getElementById('sumCB').textContent=euro.format(sumTransactions('CB'));document.getElementById('sumCash').textContent=euro.format(sumTransactions('CASH'));
   document.getElementById('sumContactless').textContent=euro.format(sumTransactions('CONTACTLESS'));document.getElementById('sumKiosk').textContent=euro.format(sumTransactions('KIOSK'));
   document.getElementById('sumRefunds').textContent=euro.format(sessionRefundTotal());document.getElementById('sumSession').textContent=euro.format(sessionRevenue());
-  document.getElementById('cashierName').disabled=open;document.getElementById('openingFloatInput').disabled=open
+  document.getElementById('cashierName').disabled=open;document.getElementById('openingFloatInput').disabled=open;
+  const exit=state.currentExit,exitDue=exit?amountDue(exit):0,pending=(exit?1:0)+state.exitQueue.length;
+  document.getElementById('cashExitPlate').textContent=exit?exit.plate:'—';
+  document.getElementById('cashExitInfo').textContent=exit?`${exit.type==='bus'?'Bus':'Voiture'} • ${Math.floor(durationMinutes(exit))} min`:'Voie libre';
+  document.getElementById('cashExitVehicleIcon').className='vehicle-icon'+(exit?.type==='bus'?' bus':'');
+  document.getElementById('cashExitQueue').textContent=`${pending} véhicule${pending>1?'s':''} en attente`;
+  document.getElementById('cashExitDue').textContent=exit?(exitDue>0?euro.format(exitDue):'SORTIE AUTORISÉE'):'—';
+  const exitState=document.getElementById('cashExitPaymentState');exitState.textContent=exit?(exitDue<=0?'PAYÉ / LIBRE':'PAIEMENT REQUIS'):'AUCUN VÉHICULE';exitState.className=`status-pill ${exit&&exitDue<=0?'good':exit?'warn':''}`;
+  document.getElementById('cashSelectExitBtn').disabled=!exit;
+  document.getElementById('cashOpenExitBtn').disabled=!exit||exitDue>0;
+  document.getElementById('cashOverrideExitBtn').disabled=!exit
 }
+function selectCurrentExitForCash(){if(!state.currentExit)return toast('Aucun véhicule à la sortie.');state.selectedCashVehicleId=state.currentExit.id;renderCash()}
+function openCashBarrier(override=false){if(!state.currentExit)return toast('Aucun véhicule à la sortie.');openExit(override)}
+function closeCashBarrier(){setGate('exit',false);toast('Barrière de sortie refermée.')}
 function renderHistory(){
   const body=document.getElementById('historyBody');if(!body)return;
   const search=(document.getElementById('historySearch')?.value||'').toUpperCase(),method=document.getElementById('historyMethod')?.value||'',status=document.getElementById('historyStatus')?.value||'';
@@ -1572,7 +1634,6 @@ openEntry=function(){
   if(state.equipment.entryGate<=0||state.equipment.anpr<=0)return toast('Équipement d’entrée hors service.');
   if(v.anprConfidence<80)return toast('Plaque à corriger avant autorisation.');
   if(v.blacklisted)return toast('ALERTE : plaque inscrite sur liste noire.');
-  if(v.height>state.maxHeight&&!v.emergency)return toast(`Véhicule trop haut : ${v.height} m.`);
   const slot=availableSpace(v);if(!slot)return toast('Aucune place compatible disponible.');
   v.entryAt=state.simTime;v.parkedAt=state.simTime;v.floor=slot.floor.name;v.spaceId=slot.space.id;v.status='driving-to-space';v.inTransit=true;
   slot.space.status='occupied';slot.space.vehicleId=v.id;state.selectedFloor=state.floors.indexOf(slot.floor);
@@ -1596,7 +1657,7 @@ openExit=function(override=false){
   if(v.fraudRisk&&Math.random()<.35&&!override){state.fraudCount++;triggerSpecificAlert(`Tentative de fraude détectée derrière ${v.plate}.`);return}
   setGate('exit',true);beep(880,.08);v.status='exited';state.stats.exits++;if(durationMinutes(v)>10)state.stats.overstays++;freeSpaceOf(v);
   state.selectedFloor=Math.max(0,state.floors.findIndex(f=>f.name===v.floor));renderAll();setTimeout(()=>animateVehicleJourney(v,'leave'),30);
-  logEvent(`${v.plate} est sorti du parking.`,'good');state.currentExit=null;state.selectedCashVehicleId=null;refreshCurrentExit();setTimeout(()=>{setGate('exit',false);renderAll()},1550);checkMissions()
+  logEvent(`${v.plate} est sorti du parking.`,'good');state.currentExit=null;refreshCurrentExit();state.selectedCashVehicleId=state.currentExit?.id||null;setTimeout(()=>{setGate('exit',false);renderAll()},1550);checkMissions()
 }
 payAtKiosk=function(id){
   const v=state.vehicles.find(x=>x.id===id);if(!v)return;if(v.paid)return toast('Stationnement déjà payé.');
