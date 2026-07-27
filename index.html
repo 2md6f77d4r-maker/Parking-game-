@@ -171,6 +171,12 @@ main{padding:14px;min-width:0}
 .cash-barrier-traffic .gate-post{height:45px}
 .cash-barrier-traffic .gate-arm{width:145px;bottom:41px}
 .cash-barrier-status{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 9px;border-radius:10px;background:#091218;border:1px solid #2d424e;font-size:11px}
+.auto-exit-box{display:grid;gap:8px;padding:10px;border-radius:12px;background:#0b161d;border:1px solid #314b59}
+.auto-exit-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.auto-mode-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border-radius:999px;background:#4b2020;color:#ffabab;font-size:10px}
+.auto-mode-pill:before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.auto-mode-pill.on{background:#173d29;color:#8ef0ad}
+.auto-exit-note{font-size:11px;color:var(--muted);line-height:1.4}
 @keyframes spacePulse{50%{box-shadow:0 0 0 4px rgba(120,224,193,.18);border-color:var(--mint)}}
 @media(max-width:1250px){.cash-workspace{grid-template-columns:250px 1fr}.cash-sidebar{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 @media(max-width:800px){.cash-workspace{grid-template-columns:1fr}.cash-sidebar{grid-template-columns:1fr}.cash-filters{grid-template-columns:1fr}.payment-grid{grid-template-columns:repeat(2,1fr)}}
@@ -304,6 +310,13 @@ main{padding:14px;min-width:0}
         <div class="traffic">
           <div class="light"><div class="bulb red on" id="exitRed"></div><div class="bulb green" id="exitGreen"></div></div>
           <div class="gate-wrap"><div class="gate-post"></div><div class="gate-arm" id="exitGate"></div></div>
+        </div>
+        <div class="auto-exit-box">
+          <div class="auto-exit-head">
+            <div><div style="font-size:12px;font-weight:700">Barrière de sortie</div><div class="auto-exit-note" id="autoExitMessage">Mode manuel actif</div></div>
+            <span class="auto-mode-pill" id="autoExitPill">MANUEL</span>
+          </div>
+          <button id="toggleAutoExitBtn" class="secondary" onclick="toggleAutoExitMode()">Activer le mode automatique</button>
         </div>
         <div class="control-row">
           <button id="payExitBtn">Encaisser</button>
@@ -544,8 +557,9 @@ main{padding:14px;min-width:0}
       <div class="panel-body stack">
         <div class="kiosk">
           <label><span class="label">Plaque du client</span><input id="kioskPlate" placeholder="AA-123-BB"></label>
-          <button onclick="kioskLookup()">Rechercher</button>
-          <div id="kioskResult" style="margin-top:10px;color:var(--muted)">Aucune recherche</div>
+          <button onclick="kioskLookup()">Rechercher et afficher le montant</button>
+          <div id="kioskResult" style="margin-top:10px;color:var(--muted)">Saisissez la plaque du véhicule.</div>
+          <div class="auto-exit-note" style="margin-top:10px">Après paiement, la plaque est enregistrée comme réglée. En mode automatique, la barrière s’ouvre seule lorsque ce véhicule arrive à la sortie.</div>
         </div>
         <button onclick="simulateKioskCustomer()" class="secondary">Simuler un paiement borne</button>
       </div>
@@ -600,6 +614,11 @@ main{padding:14px;min-width:0}
       <label><span class="label">Tarif ticket perdu</span><input id="settingLostTicket" type="number" min="0" step="1"></label>
       <label><span class="label">Délai de grâce après paiement (minutes)</span><input id="settingGrace" type="number" min="0"></label>
       <div class="section"><div class="cash-line"><span>Contrôle de hauteur</span><span class="status-pill good">Désactivé</span></div><div style="color:var(--muted);font-size:11px;margin-top:5px">Les voitures et les bus peuvent entrer. Les bus sont dirigés vers leurs emplacements dédiés.</div></div>
+      <div class="section">
+        <div class="cash-line"><span>Sortie automatique</span><span class="status-pill" id="settingAutoExitState">DÉSACTIVÉE</span></div>
+        <div class="auto-exit-note">Autorise l’ouverture automatique uniquement lorsque le paiement est intégralement validé, notamment à la borne automatique.</div>
+        <button type="button" class="small secondary" style="margin-top:8px" onclick="toggleAutoExitMode()">Changer le mode</button>
+      </div>
       <label><span class="label">Difficulté</span><select id="settingDifficulty"><option value="easy">Facile</option><option value="normal">Normal</option><option value="hard">Difficile</option></select></label>
       <button onclick="saveSettings()">Enregistrer les tarifs</button>
     </div>
@@ -721,7 +740,7 @@ function createInitialState(){
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,
     construction:[],fraudCount:0,collisions:0,badParking:0,
     mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
-    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide'
+    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide',autoExitMode:false,autoExitPending:false,lastAutoExitVehicleId:null
   }
 }
 function initFloor(index){
@@ -1126,7 +1145,7 @@ function ensureAdvancedState(){
     dailyOperatingCost:180,electricityCost:0,contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,construction:[],fraudCount:0,collisions:0,
     badParking:0,mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
-    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide'};
+    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide',autoExitMode:false,autoExitPending:false,lastAutoExitVehicleId:null};
   Object.entries(defaults).forEach(([k,v])=>{if(state[k]===undefined)state[k]=v});
   state.version=3;
   state.register={open:false,float:0,openedAt:null,agent:null,sessionId:null,closedAt:null,actualCash:null,difference:null,...(state.register||{})};
@@ -1360,7 +1379,43 @@ function renderAdvanced(){
   const schedule=document.getElementById('scheduleBox');if(schedule){schedule.innerHTML='<div class="schedule-grid"><strong>Employé</strong><strong>Matin</strong><strong>Après-midi</strong><strong>Nuit</strong>'+state.staff.map(s=>`<span>${s.name}</span><select onchange="setShift(${s.id},this.value)"><option>Service</option><option>Pause</option><option>Repos</option></select><select><option>Service</option><option>Pause</option><option>Repos</option></select><select><option>Repos</option><option>Service</option></select>`).join('')+'</div>'}
   renderWatch('blacklist','blacklistBox');renderWatch('subscribers','subscribersBox');renderWatch('priority','priorityBox');
   const ramp=document.getElementById('rampDisplay');if(ramp)ramp.textContent=state.floors.length>1?`Rampe active vers ${state.floors.length-1} autre(s) niveau(x)`:'Rampe future • ajoutez un étage';
+  renderAutomaticExitControls();
+  scheduleAutomaticExitCheck();
   renderPedestrians()
+}
+function toggleAutoExitMode(){
+  ensureAdvancedState();
+  state.autoExitMode=!state.autoExitMode;
+  state.autoExitPending=false;
+  state.lastAutoExitVehicleId=null;
+  logEvent(`Barrière de sortie passée en mode ${state.autoExitMode?'automatique':'manuel'}.`,state.autoExitMode?'good':'warn');
+  toast(state.autoExitMode?'Sortie automatique activée.':'Sortie automatique désactivée.');
+  renderAll();saveGame(true)
+}
+function renderAutomaticExitControls(){
+  const enabled=!!state.autoExitMode,v=state.currentExit,due=v?amountDue(v):0;
+  const pill=document.getElementById('autoExitPill'),btn=document.getElementById('toggleAutoExitBtn'),msg=document.getElementById('autoExitMessage'),setting=document.getElementById('settingAutoExitState');
+  if(pill){pill.textContent=enabled?'AUTOMATIQUE':'MANUEL';pill.className=`auto-mode-pill ${enabled?'on':''}`}
+  if(btn){btn.textContent=enabled?'Repasser en mode manuel':'Activer le mode automatique';btn.className=enabled?'warning':'secondary'}
+  if(msg){
+    if(!enabled)msg.textContent='Ouverture uniquement sur commande de l’opérateur.';
+    else if(!v)msg.textContent='En attente d’un véhicule payé.';
+    else if(due<=.001)msg.textContent=`${v.plate} reconnu : ouverture automatique imminente.`;
+    else msg.textContent=`${v.plate} : paiement de ${euro.format(due)} requis.`
+  }
+  if(setting){setting.textContent=enabled?'ACTIVÉE':'DÉSACTIVÉE';setting.className=`status-pill ${enabled?'good':'warn'}`}
+}
+function scheduleAutomaticExitCheck(){
+  if(!state.autoExitMode||state.autoExitPending||!state.currentExit)return;
+  const v=state.currentExit;
+  if(amountDue(v)>.001)return;
+  if(state.lastAutoExitVehicleId===v.id)return;
+  state.autoExitPending=true;state.lastAutoExitVehicleId=v.id;
+  logEvent(`${v.plate} reconnu à la sortie avec paiement validé${v.paymentMethod==='KIOSK'?' à la borne':''}. Ouverture automatique.`, 'good');
+  setTimeout(()=>{
+    state.autoExitPending=false;
+    if(state.autoExitMode&&state.currentExit?.id===v.id&&amountDue(v)<=.001)openExit(false);
+  },650)
 }
 function renderWatch(type,id){const box=document.getElementById(id);if(!box)return;box.innerHTML=state[type].map(p=>`<span class="status-pill">${p} <button class="small danger" onclick="removeWatchPlate('${type}','${p}')">×</button></span>`).join(' ')}
 function setShift(id,value){const s=state.staff.find(x=>x.id===id);if(s)s.status=value==='Repos'?'Repos':value==='Pause'?'Pause':'En service';renderAll()}
@@ -1601,7 +1656,8 @@ function renderCash(){
   const exitState=document.getElementById('cashExitPaymentState');exitState.textContent=exit?(exitDue<=0?'PAYÉ / LIBRE':'PAIEMENT REQUIS'):'AUCUN VÉHICULE';exitState.className=`status-pill ${exit&&exitDue<=0?'good':exit?'warn':''}`;
   document.getElementById('cashSelectExitBtn').disabled=!exit;
   document.getElementById('cashOpenExitBtn').disabled=!exit||exitDue>0;
-  document.getElementById('cashOverrideExitBtn').disabled=!exit
+  document.getElementById('cashOverrideExitBtn').disabled=!exit;
+  const manualOpen=document.getElementById('openExitBtn');if(manualOpen)manualOpen.disabled=!exit||exitDue>0||state.autoExitMode
 }
 function selectCurrentExitForCash(){if(!state.currentExit)return toast('Aucun véhicule à la sortie.');state.selectedCashVehicleId=state.currentExit.id;renderCash()}
 function openCashBarrier(override=false){if(!state.currentExit)return toast('Aucun véhicule à la sortie.');openExit(override)}
@@ -1660,11 +1716,17 @@ openExit=function(override=false){
   logEvent(`${v.plate} est sorti du parking.`,'good');state.currentExit=null;refreshCurrentExit();state.selectedCashVehicleId=state.currentExit?.id||null;setTimeout(()=>{setGate('exit',false);renderAll()},1550);checkMissions()
 }
 payAtKiosk=function(id){
-  const v=state.vehicles.find(x=>x.id===id);if(!v)return;if(v.paid)return toast('Stationnement déjà payé.');
+  const v=state.vehicles.find(x=>x.id===id);if(!v)return;if(v.paid&&amountDue(v)<=.001)return toast('Stationnement déjà payé.');
   state.selectedCashVehicleId=v.id;const amount=amountDue(v),oldOpen=state.register.open;
   if(!oldOpen)state.register.open=true;
   const ok=payCurrent('KIOSK',amount,{agent:'Borne automatique'});
-  if(!oldOpen)state.register.open=false;if(ok){state.kioskPayments++;renderAll()}
+  if(!oldOpen)state.register.open=false;
+  if(ok){
+    state.kioskPayments++;v.kioskValidated=true;v.kioskValidatedAt=state.simTime;
+    document.getElementById('kioskResult').innerHTML=`<span class="status-pill good">PAIEMENT ACCEPTÉ</span><br><br>Plaque : <strong>${escapeHTML(v.plate)}</strong><br>Montant : <strong>${euro.format(amount)}</strong><br>Sortie autorisée pendant ${state.graceMinutes} minute(s).${state.autoExitMode?'<br><br>La barrière s’ouvrira automatiquement à la reconnaissance de la plaque.':'<br><br>Présentez-vous à la sortie ; l’opérateur ouvrira la barrière.'}`;
+    logEvent(`${v.plate} : paiement borne validé, autorisation de sortie enregistrée.`,'good');
+    renderAll();scheduleAutomaticExitCheck()
+  }
 }
 openPayment=function(){if(state.currentExit)state.selectedCashVehicleId=state.currentExit.id;switchView('cash')}
 function showKeyboardHelp(){alert('RACCOURCIS CLAVIER\\n\\nE : ouvrir l’entrée\\nS : ouvrir la sortie\\nP : encaisser\\nA : nouvelle arrivée\\nEspace : pause / reprise\\n1 à 5 : changer de vue\\nR : rapport imprimable')}
