@@ -178,6 +178,23 @@ main{padding:14px;min-width:0}
 .auto-mode-pill.on{background:#173d29;color:#8ef0ad}
 .auto-exit-note{font-size:11px;color:var(--muted);line-height:1.4}
 @keyframes spacePulse{50%{box-shadow:0 0 0 4px rgba(120,224,193,.18);border-color:var(--mint)}}
+
+/* --- ÉCRAN SORTIE & BORNE AUTOMATIQUE V4 --- */
+.exit-price-screen{background:#05090c;border:2px solid #354b58;border-radius:14px;padding:12px 14px;box-shadow:inset 0 0 24px rgba(0,0,0,.65);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.exit-price-top{display:flex;justify-content:space-between;gap:10px;align-items:center;color:#9fb3bd;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.exit-price-main{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-top:8px}
+.exit-screen-plate{font-size:18px;font-weight:900;letter-spacing:.08em;color:#fff}
+.exit-screen-amount{font-size:29px;font-weight:900;color:var(--amber)}
+.exit-screen-message{margin-top:8px;padding-top:8px;border-top:1px dashed #344953;font-size:12px;color:#c8d7dd}
+.exit-price-screen.paid{border-color:var(--green)}.exit-price-screen.paid .exit-screen-amount{color:var(--green)}
+.exit-price-screen.free{border-color:var(--blue)}.exit-price-screen.free .exit-screen-amount{color:var(--blue)}
+.kiosk-screen{background:#050b0f;border:2px solid #415a68;border-radius:16px;padding:15px;min-height:225px;box-shadow:inset 0 0 28px rgba(0,0,0,.55)}
+.kiosk-brand{display:flex;justify-content:space-between;gap:8px;align-items:center;padding-bottom:10px;border-bottom:1px solid #263b47}
+.kiosk-brand strong{font-size:16px}.kiosk-step{font-size:10px;color:var(--muted)}
+.kiosk-result-card{margin-top:12px;display:grid;gap:8px}.kiosk-big-amount{font-size:32px;color:var(--mint);font-weight:900}
+.kiosk-methods{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.kiosk-methods button{min-height:48px}
+.kiosk-ticket{background:#f5f5f2;color:#171717;border-radius:10px;padding:11px;font-family:ui-monospace,monospace;font-size:11px}
+
 @media(max-width:1250px){.cash-workspace{grid-template-columns:250px 1fr}.cash-sidebar{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 @media(max-width:800px){.cash-workspace{grid-template-columns:1fr}.cash-sidebar{grid-template-columns:1fr}.cash-filters{grid-template-columns:1fr}.payment-grid{grid-template-columns:repeat(2,1fr)}}
 
@@ -306,6 +323,14 @@ main{padding:14px;min-width:0}
               <div class="confidence" id="exitMatch">Correspondance : —</div>
             </div>
           </div>
+        </div>
+        <div class="exit-price-screen" id="exitPriceScreen">
+          <div class="exit-price-top"><span>AFFICHEUR SORTIE</span><span id="exitScreenClock">--:--</span></div>
+          <div class="exit-price-main">
+            <div><div class="exit-screen-plate" id="exitScreenPlate">VOIE LIBRE</div><div style="font-size:10px;color:var(--muted);margin-top:4px" id="exitScreenDuration">Présentez votre véhicule</div></div>
+            <div class="exit-screen-amount" id="exitScreenAmount">—</div>
+          </div>
+          <div class="exit-screen-message" id="exitScreenMessage">La caméra affichera automatiquement le montant à payer.</div>
         </div>
         <div class="traffic">
           <div class="light"><div class="bulb red on" id="exitRed"></div><div class="bulb green" id="exitGreen"></div></div>
@@ -556,12 +581,25 @@ main{padding:14px;min-width:0}
       <div class="panel-title"><h2>Borne de paiement</h2></div>
       <div class="panel-body stack">
         <div class="kiosk">
-          <label><span class="label">Plaque du client</span><input id="kioskPlate" placeholder="AA-123-BB"></label>
-          <button onclick="kioskLookup()">Rechercher et afficher le montant</button>
-          <div id="kioskResult" style="margin-top:10px;color:var(--muted)">Saisissez la plaque du véhicule.</div>
-          <div class="auto-exit-note" style="margin-top:10px">Après paiement, la plaque est enregistrée comme réglée. En mode automatique, la barrière s’ouvre seule lorsque ce véhicule arrive à la sortie.</div>
+          <div class="kiosk-screen">
+            <div class="kiosk-brand"><strong>BORNE AUTOMATIQUE</strong><span class="kiosk-step" id="kioskStep">1/3 IDENTIFICATION</span></div>
+            <label style="display:block;margin-top:12px"><span class="label">Saisissez votre plaque</span><input id="kioskPlate" placeholder="AA-123-BB" onkeydown="if(event.key==='Enter')kioskLookup()"></label>
+            <button onclick="kioskLookup()" style="width:100%;margin-top:9px">Rechercher mon véhicule</button>
+            <div id="kioskResult" class="kiosk-result-card"><span style="color:var(--muted)">Saisissez la plaque du véhicule pour afficher la durée et le prix.</span></div>
+          </div>
+          <div class="kiosk-methods" id="kioskMethods" style="margin-top:10px;display:none">
+            <button onclick="confirmKioskPayment('CB')">Carte bancaire</button>
+            <button class="secondary" onclick="confirmKioskPayment('CONTACTLESS')">Sans contact</button>
+            <button class="secondary" onclick="confirmKioskPayment('MOBILE')">Apple / Google Pay</button>
+            <button class="secondary" onclick="confirmKioskPayment('CASH')">Espèces</button>
+          </div>
+          <div class="control-row" style="margin-top:10px">
+            <button class="small warning" onclick="kioskLostTicket()">Ticket / plaque introuvable</button>
+            <button class="small secondary" onclick="resetKiosk()">Annuler</button>
+          </div>
+          <div class="auto-exit-note" style="margin-top:10px">Après paiement, la plaque est autorisée à sortir pendant le délai de grâce. En mode automatique, la barrière s’ouvre à sa reconnaissance.</div>
         </div>
-        <button onclick="simulateKioskCustomer()" class="secondary">Simuler un paiement borne</button>
+        <button onclick="simulateKioskCustomer()" class="secondary">Simuler un client à la borne</button>
       </div>
     </section>
 
@@ -1230,7 +1268,7 @@ function triggerSpecificAlert(text){
   const b=document.getElementById('globalAlert');b.textContent=text;b.classList.add('show');
   beep(260,.45);setTimeout(()=>b.classList.remove('show'),7000)
 }
-function kioskLookup(){
+function legacyKioskLookup(){
   const plate=document.getElementById('kioskPlate').value.toUpperCase().trim();
   const v=state.vehicles.find(x=>x.plate===plate&&['parked','waiting-exit'].includes(x.status));
   const box=document.getElementById('kioskResult');
@@ -1245,7 +1283,7 @@ function payAtKiosk(id){
   state.transactions.push({id:String(Date.now()+Math.random()),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:'KIOSK',amount,status:'VALIDÉ'});
   logEvent(`${v.plate} a payé ${euro.format(amount)} à la borne.`,'good');toast('Paiement borne accepté.');renderAll()
 }
-function simulateKioskCustomer(){
+function legacySimulateKioskCustomer(){
   const v=occupiedVehicles().find(x=>!x.paid);if(!v)return toast('Aucun client disponible.');
   document.getElementById('kioskPlate').value=v.plate;kioskLookup()
 }
@@ -1350,6 +1388,68 @@ function processConstruction(){
     return true
   })
 }
+
+let kioskVehicleId=null;
+function resetKiosk(){
+  kioskVehicleId=null;
+  const plate=document.getElementById('kioskPlate');if(plate)plate.value='';
+  const result=document.getElementById('kioskResult');if(result)result.innerHTML='<span style="color:var(--muted)">Saisissez la plaque du véhicule pour afficher la durée et le prix.</span>';
+  const methods=document.getElementById('kioskMethods');if(methods)methods.style.display='none';
+  const step=document.getElementById('kioskStep');if(step)step.textContent='1/3 IDENTIFICATION';
+}
+function kioskLookup(){
+  const plate=document.getElementById('kioskPlate').value.toUpperCase().trim();
+  const v=state.vehicles.find(x=>x.plate===plate&&['parked','driving-to-exit','waiting-exit'].includes(x.status));
+  const box=document.getElementById('kioskResult'),methods=document.getElementById('kioskMethods'),step=document.getElementById('kioskStep');
+  if(!v){kioskVehicleId=null;methods.style.display='none';step.textContent='VÉHICULE INTROUVABLE';box.innerHTML='<span class="status-pill bad">INTROUVABLE</span><div>Vérifiez la plaque ou utilisez le tarif ticket perdu.</div>';return}
+  kioskVehicleId=v.id;
+  const due=amountDue(v),paid=due<=.001;
+  step.textContent=paid?'PAIEMENT DÉJÀ VALIDÉ':'2/3 PAIEMENT';
+  methods.style.display=paid?'none':'grid';
+  box.innerHTML=`<div class="cash-line"><span>Plaque</span><strong>${escapeHTML(v.plate)}</strong></div><div class="cash-line"><span>Entrée</span><span>${new Date(v.entryAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span></div><div class="cash-line"><span>Durée</span><span>${Math.floor(durationMinutes(v))} min</span></div><div>Montant à régler</div><div class="kiosk-big-amount">${euro.format(due)}</div>${paid?'<span class="status-pill good">DÉJÀ PAYÉ — SORTIE AUTORISÉE</span>':''}`;
+}
+function confirmKioskPayment(method){
+  const v=state.vehicles.find(x=>x.id===kioskVehicleId);if(!v)return toast('Recherchez d’abord un véhicule.');
+  const due=amountDue(v);if(due<=.001)return toast('Ce stationnement est déjà réglé.');
+  if(['CB','CONTACTLESS','MOBILE'].includes(method)&&Math.random()<.04)return toast('Paiement refusé par la banque. Réessayez.');
+  const amount=due;v.paid=true;v.paidAt=state.simTime;v.paidAmount=amount;v.paymentMethod='KIOSK';v.kioskPaymentType=method;v.receiptNo=state.receiptCounter++;
+  state.revenue+=amount;state.budget+=amount;state.kioskPayments++;
+  state.transactions.push({id:String(Date.now()+Math.random()),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:'KIOSK',amount,status:'VALIDÉ',detail:method,agent:'Borne automatique'});
+  const step=document.getElementById('kioskStep');step.textContent='3/3 TERMINÉ';document.getElementById('kioskMethods').style.display='none';
+  document.getElementById('kioskResult').innerHTML=`<span class="status-pill good">PAIEMENT ACCEPTÉ</span><div class="kiosk-ticket"><strong>TICKET N° ${String(v.receiptNo).padStart(6,'0')}</strong><br>Plaque : ${escapeHTML(v.plate)}<br>Moyen : ${method}<br>Montant : ${euro.format(amount)}<br>Payé à : ${simNow().toLocaleTimeString('fr-FR')}<br>Sortie autorisée ${state.graceMinutes} min</div><button class="small secondary" onclick="printKioskReceipt(${v.id})">Imprimer le reçu</button>`;
+  logEvent(`${v.plate} a payé ${euro.format(amount)} à la borne automatique (${method}).`,'good');toast('Paiement borne accepté.');renderAll();scheduleAutomaticExitCheck();
+}
+function kioskLostTicket(){
+  const plate=document.getElementById('kioskPlate').value.toUpperCase().trim();
+  const v=state.vehicles.find(x=>x.plate===plate&&['parked','driving-to-exit','waiting-exit'].includes(x.status));
+  if(!v)return toast('Saisissez une plaque présente dans le parking.');
+  v.lostTicket=true;kioskVehicleId=v.id;kioskLookup();toast(`Tarif ticket perdu appliqué : ${euro.format(state.rates.lostTicket)}.`)
+}
+function printKioskReceipt(id){const v=state.vehicles.find(x=>x.id===id);if(!v)return;const w=window.open('','_blank','width=420,height=620');w.document.write(`<pre style="font:14px monospace;padding:24px">PARKING MANAGER PRO
+BORNE AUTOMATIQUE
+
+Ticket n° ${String(v.receiptNo||0).padStart(6,'0')}
+Plaque : ${escapeHTML(v.plate)}
+Montant : ${euro.format(v.paidAmount||0)}
+Moyen : ${v.kioskPaymentType||'BORNE'}
+Heure : ${simNow().toLocaleString('fr-FR')}
+
+Sortie autorisée ${state.graceMinutes} minute(s).
+</pre>`);w.document.close();w.print()}
+function renderExitPriceScreen(){
+  const v=state.currentExit,screen=document.getElementById('exitPriceScreen');if(!screen)return;
+  document.getElementById('exitScreenClock').textContent=simNow().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  if(!v){screen.className='exit-price-screen';document.getElementById('exitScreenPlate').textContent='VOIE LIBRE';document.getElementById('exitScreenDuration').textContent='Présentez votre véhicule';document.getElementById('exitScreenAmount').textContent='—';document.getElementById('exitScreenMessage').textContent='La caméra affichera automatiquement le montant à payer.';return}
+  const due=amountDue(v),paid=due<=.001;
+  screen.className='exit-price-screen '+(paid?'paid':due===0?'free':'');
+  document.getElementById('exitScreenPlate').textContent=v.plate;
+  document.getElementById('exitScreenDuration').textContent=`Durée : ${Math.floor(durationMinutes(v))} min`;
+  document.getElementById('exitScreenAmount').textContent=paid?'PAYÉ':euro.format(due);
+  document.getElementById('exitScreenMessage').textContent=paid?(state.autoExitMode?'Paiement validé — ouverture automatique':'Paiement validé — attendez l’ouverture de la barrière'):`Montant à payer : ${euro.format(due)} — utilisez la borne automatique ou la caisse`;
+}
+
+function simulateKioskCustomer(){const v=occupiedVehicles().find(x=>!x.paid)||occupiedVehicles()[0];if(!v)return toast('Aucun client disponible.');document.getElementById('kioskPlate').value=v.plate;kioskLookup()}
+
 function advancedSimulation(){
   processConstruction();
   if(state.speed===0)return;
@@ -1380,6 +1480,7 @@ function renderAdvanced(){
   renderWatch('blacklist','blacklistBox');renderWatch('subscribers','subscribersBox');renderWatch('priority','priorityBox');
   const ramp=document.getElementById('rampDisplay');if(ramp)ramp.textContent=state.floors.length>1?`Rampe active vers ${state.floors.length-1} autre(s) niveau(x)`:'Rampe future • ajoutez un étage';
   renderAutomaticExitControls();
+  renderExitPriceScreen();
   scheduleAutomaticExitCheck();
   renderPedestrians()
 }
