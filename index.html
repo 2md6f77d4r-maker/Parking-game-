@@ -178,6 +178,12 @@ main{padding:14px;min-width:0}
 .auto-mode-pill.on{background:#173d29;color:#8ef0ad}
 .auto-exit-note{font-size:11px;color:var(--muted);line-height:1.4}
 @keyframes spacePulse{50%{box-shadow:0 0 0 4px rgba(120,224,193,.18);border-color:var(--mint)}}
+.holding-area{background:#111b22;border:1px solid #3b5260;border-radius:13px;padding:11px}
+.holding-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:9px}
+.holding-list{display:grid;gap:6px;max-height:120px;overflow:auto}
+.holding-item{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#0a1319;border:1px solid #2c414d;border-radius:9px;padding:8px;font-size:11px}
+.holding-gate{height:54px;margin:8px 0;position:relative;background:#091218;border:1px dashed #3a505c;border-radius:10px;overflow:hidden}
+.holding-gate .gate-post{height:38px;bottom:7px}.holding-gate .gate-arm{width:125px;bottom:34px}
 
 /* --- ÉCRAN SORTIE & BORNE AUTOMATIQUE V4 --- */
 .exit-price-screen{background:#05090c;border:2px solid #354b58;border-radius:14px;padding:12px 14px;box-shadow:inset 0 0 24px rgba(0,0,0,.65);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -250,9 +256,16 @@ main{padding:14px;min-width:0}
         </div>
         <div class="control-row">
           <button id="openEntryBtn" class="success">Ouvrir</button>
+          <button id="holdEntryBtn" class="warning">Mettre de côté</button>
           <button id="editPlateBtn" class="secondary">Corriger plaque</button>
           <button id="refuseEntryBtn" class="danger">Refuser</button>
           <button id="manualArrivalBtn" class="secondary">Nouvelle arrivée</button>
+        </div>
+        <div class="holding-area">
+          <div class="holding-head"><strong>Zone de mise à l’écart</strong><span id="holdingCount">0 véhicule</span></div>
+          <div class="holding-gate"><div class="gate-post"></div><div class="gate-arm" id="holdingGate"></div></div>
+          <div class="control-row"><button class="small success" id="releaseHoldingBtn" onclick="releaseHoldingVehicle()">Réintégrer le premier véhicule</button></div>
+          <div class="holding-list" id="holdingList"></div>
         </div>
         <div class="queue-list" id="entryQueue"></div>
       </div>
@@ -597,7 +610,7 @@ main{padding:14px;min-width:0}
             <button class="small warning" onclick="kioskLostTicket()">Ticket / plaque introuvable</button>
             <button class="small secondary" onclick="resetKiosk()">Annuler</button>
           </div>
-          <div class="auto-exit-note" style="margin-top:10px">Après paiement, la plaque est autorisée à sortir pendant le délai de grâce. En mode automatique, la barrière s’ouvre à sa reconnaissance.</div>
+          <div class="auto-exit-note" style="margin-top:10px">Après paiement, la plaque est autorisée à sortir pendant le délai de grâce. Lorsque la caisse est fermée, tout paiement à la borne déclenche automatiquement l’ouverture à la sortie.</div>
         </div>
         <button onclick="simulateKioskCustomer()" class="secondary">Simuler un client à la borne</button>
       </div>
@@ -778,7 +791,7 @@ function createInitialState(){
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,
     construction:[],fraudCount:0,collisions:0,badParking:0,
     mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
-    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide',autoExitMode:false,autoExitPending:false,lastAutoExitVehicleId:null
+    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide',autoExitMode:false,autoExitPending:false,lastAutoExitVehicleId:null,holdingVehicles:[],holdingGateOpen:false
   }
 }
 function initFloor(index){
@@ -974,15 +987,17 @@ function occupiedVehicles(){return state.vehicles.filter(v=>['parked','waiting-e
 function totalCapacity(type){return state.floors.reduce((n,f)=>n+(type==='bus'?f.busSpaces.length:f.spaces.length),0)}
 function freeCount(type){return state.floors.reduce((n,f)=>n+(f.closed?0:(type==='bus'?f.busSpaces:f.spaces).filter(s=>s.status==='free').length),0)}
 function addFloor(){
-  const cost=2500;if(state.budget<cost)return toast(`Budget insuffisant : ${euro.format(cost)} nécessaires.`);
-  state.floors.push(initFloor(state.floors.length));state.budget-=cost;state.expenses+=cost;state.selectedFloor=state.floors.length-1;logEvent(`Nouvel étage construit pour ${euro.format(cost)}.`,'good');renderAll()
+  state.floors.push(initFloor(state.floors.length));
+  state.selectedFloor=state.floors.length-1;
+  logEvent(`Niveau ${state.floors[state.selectedFloor].name} ajouté gratuitement.`,'good');
+  renderAll()
 }
 function removeFloor(){
   if(state.floors.length<=1)return toast('Au moins un étage est obligatoire.');
   const f=state.floors[state.selectedFloor];
   if([...f.spaces,...f.busSpaces].some(s=>s.status==='occupied'))return toast('Étage occupé.');
   if(!confirm(`Retirer le niveau ${f.name} ?`))return;
-  state.floors.splice(state.selectedFloor,1);state.selectedFloor=Math.max(0,state.selectedFloor-1);state.budget+=1000;logEvent(`Niveau ${f.name} retiré.`,'warn');renumberFloors();renderAll()
+  state.floors.splice(state.selectedFloor,1);state.selectedFloor=Math.max(0,state.selectedFloor-1);logEvent(`Niveau ${f.name} retiré.`,'warn');renumberFloors();renderAll()
 }
 function renumberFloors(){state.floors.forEach((f,i)=>{f.name=String.fromCharCode(65+i);f.spaces.forEach((s,j)=>s.id=`${f.name}${String(j+1).padStart(2,'0')}`);f.busSpaces.forEach((s,j)=>s.id=`${f.name}B${j+1}`)})}
 function toggleFloorClosed(){
@@ -1102,7 +1117,7 @@ function renderEntry(){
   refreshCurrentEntry();const v=state.currentEntry;
   document.getElementById('entryPlate').textContent=v?v.plate:'—';document.getElementById('entryInfo').textContent=v?`${v.type==='bus'?'Bus':'Voiture'} • besoin ${kindLabel(v.need)}`:'Aucun véhicule';
   document.getElementById('entryConfidence').textContent=v?`Confiance ANPR : ${v.anprConfidence} %`:'Confiance ANPR : —';document.getElementById('entryVehicleIcon').className='vehicle-icon'+(v&&v.type==='bus'?' bus':'');
-  ['openEntryBtn','editPlateBtn','refuseEntryBtn'].forEach(id=>document.getElementById(id).disabled=!v);
+  ['openEntryBtn','holdEntryBtn','editPlateBtn','refuseEntryBtn'].forEach(id=>document.getElementById(id).disabled=!v);
   document.getElementById('entryQueueCount').textContent=`${state.entryQueue.length} en attente`;const q=document.getElementById('entryQueue');q.innerHTML='';
   state.entryQueue.forEach(x=>q.insertAdjacentHTML('beforeend',`<div class="queue-item"><span>${x.plate}</span><span>${x.type==='bus'?'Bus':'Voiture'}</span></div>`))
 }
@@ -1183,7 +1198,7 @@ function ensureAdvancedState(){
     dailyOperatingCost:180,electricityCost:0,contracts:[],missions:[],blacklist:[],subscribers:[],priority:[],
     scenario:null,alerts:[],receiptCounter:1,lastDayRevenue:0,construction:[],fraudCount:0,collisions:0,
     badParking:0,mixedPayment:null,refunds:[],kioskPayments:0,registerSessions:[],
-    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide',autoExitMode:false,autoExitPending:false,lastAutoExitVehicleId:null};
+    selectedCashVehicleId:null,selectedTransactionId:null,routeMessage:'Circulation fluide',autoExitMode:false,autoExitPending:false,lastAutoExitVehicleId:null,holdingVehicles:[],holdingGateOpen:false};
   Object.entries(defaults).forEach(([k,v])=>{if(state[k]===undefined)state[k]=v});
   state.version=3;
   state.register={open:false,float:0,openedAt:null,agent:null,sessionId:null,closedAt:null,actualCash:null,difference:null,...(state.register||{})};
@@ -1445,7 +1460,7 @@ function renderExitPriceScreen(){
   document.getElementById('exitScreenPlate').textContent=v.plate;
   document.getElementById('exitScreenDuration').textContent=`Durée : ${Math.floor(durationMinutes(v))} min`;
   document.getElementById('exitScreenAmount').textContent=paid?'PAYÉ':euro.format(due);
-  document.getElementById('exitScreenMessage').textContent=paid?(state.autoExitMode?'Paiement validé — ouverture automatique':'Paiement validé — attendez l’ouverture de la barrière'):`Montant à payer : ${euro.format(due)} — utilisez la borne automatique ou la caisse`;
+  document.getElementById('exitScreenMessage').textContent=paid?((state.autoExitMode||(!state.register.open&&v.paymentMethod==='KIOSK'))?'Paiement validé — ouverture automatique':'Paiement validé — attendez l’ouverture de la barrière'):`Montant à payer : ${euro.format(due)} — utilisez la borne automatique ou la caisse`;
 }
 
 function simulateKioskCustomer(){const v=occupiedVehicles().find(x=>!x.paid)||occupiedVehicles()[0];if(!v)return toast('Aucun client disponible.');document.getElementById('kioskPlate').value=v.plate;kioskLookup()}
@@ -1480,6 +1495,7 @@ function renderAdvanced(){
   renderWatch('blacklist','blacklistBox');renderWatch('subscribers','subscribersBox');renderWatch('priority','priorityBox');
   const ramp=document.getElementById('rampDisplay');if(ramp)ramp.textContent=state.floors.length>1?`Rampe active vers ${state.floors.length-1} autre(s) niveau(x)`:'Rampe future • ajoutez un étage';
   renderAutomaticExitControls();
+  renderHoldingArea();
   renderExitPriceScreen();
   scheduleAutomaticExitCheck();
   renderPedestrians()
@@ -1500,22 +1516,24 @@ function renderAutomaticExitControls(){
   if(btn){btn.textContent=enabled?'Repasser en mode manuel':'Activer le mode automatique';btn.className=enabled?'warning':'secondary'}
   if(msg){
     if(!enabled)msg.textContent='Ouverture uniquement sur commande de l’opérateur.';
-    else if(!v)msg.textContent='En attente d’un véhicule payé.';
+    else if(!v)msg.textContent=state.register.open?'En attente d’un véhicule payé.':'Caisse fermée : les paiements borne ouvrent automatiquement la sortie.';
     else if(due<=.001)msg.textContent=`${v.plate} reconnu : ouverture automatique imminente.`;
     else msg.textContent=`${v.plate} : paiement de ${euro.format(due)} requis.`
   }
   if(setting){setting.textContent=enabled?'ACTIVÉE':'DÉSACTIVÉE';setting.className=`status-pill ${enabled?'good':'warn'}`}
 }
 function scheduleAutomaticExitCheck(){
-  if(!state.autoExitMode||state.autoExitPending||!state.currentExit)return;
+  if(state.autoExitPending||!state.currentExit)return;
   const v=state.currentExit;
-  if(amountDue(v)>.001)return;
+  const automaticAllowed=state.autoExitMode||(!state.register.open&&v.paymentMethod==='KIOSK');
+  if(!automaticAllowed||amountDue(v)>.001)return;
   if(state.lastAutoExitVehicleId===v.id)return;
   state.autoExitPending=true;state.lastAutoExitVehicleId=v.id;
   logEvent(`${v.plate} reconnu à la sortie avec paiement validé${v.paymentMethod==='KIOSK'?' à la borne':''}. Ouverture automatique.`, 'good');
   setTimeout(()=>{
     state.autoExitPending=false;
-    if(state.autoExitMode&&state.currentExit?.id===v.id&&amountDue(v)<=.001)openExit(false);
+    const stillAllowed=state.autoExitMode||(!state.register.open&&state.currentExit?.paymentMethod==='KIOSK');
+    if(stillAllowed&&state.currentExit?.id===v.id&&amountDue(v)<=.001)openExit(false);
   },650)
 }
 function renderWatch(type,id){const box=document.getElementById(id);if(!box)return;box.innerHTML=state[type].map(p=>`<span class="status-pill">${p} <button class="small danger" onclick="removeWatchPlate('${type}','${p}')">×</button></span>`).join(' ')}
@@ -1788,16 +1806,45 @@ occupiedVehicles=function(){return state.vehicles.filter(v=>['parked','driving-t
 openEntry=function(){
   const v=state.currentEntry;if(!v)return toast('Aucun véhicule à l’entrée.');
   if(computedStatus()==='CLOSED')return toast('Le parking est fermé.');
-  if(state.equipment.entryGate<=0||state.equipment.anpr<=0)return toast('Équipement d’entrée hors service.');
-  if(v.anprConfidence<80)return toast('Plaque à corriger avant autorisation.');
+  if(state.equipment.entryGate<=0)return toast('Barrière d’entrée hors service.');
+  if(state.equipment.anpr<=0)logEvent('Lecteur ANPR hors service : entrée traitée manuellement.','warn');
   if(v.blacklisted)return toast('ALERTE : plaque inscrite sur liste noire.');
-  const slot=availableSpace(v);if(!slot)return toast('Aucune place compatible disponible.');
+  const slot=availableSpace(v);if(!slot)return toast('Aucune place disponible : utilisez « Mettre de côté ».');
   v.entryAt=state.simTime;v.parkedAt=state.simTime;v.floor=slot.floor.name;v.spaceId=slot.space.id;v.status='driving-to-space';v.inTransit=true;
   slot.space.status='occupied';slot.space.vehicleId=v.id;state.selectedFloor=state.floors.indexOf(slot.floor);
   state.stats.entries++;state.stats.waitTotal+=(state.simTime-v.arrivalAt)/1000;state.stats.waitCount++;state.trafficByHour[simNow().getHours()]++;
   setGate('entry',true);beep(880,.08);logEvent(`${v.plate} admis et guidé vers ${v.spaceId}.`,'good');
   state.currentEntry=null;refreshCurrentEntry();renderAll();setTimeout(()=>animateVehicleJourney(v,'to-space'),30);
   setTimeout(()=>{v.status='parked';v.inTransit=false;renderAll()},2750);setTimeout(()=>setGate('entry',false),900)
+}
+function setHoldingGate(open){
+  state.holdingGateOpen=!!open;
+  const gate=document.getElementById('holdingGate');if(gate)gate.classList.toggle('open',!!open);
+}
+function holdCurrentEntry(){
+  const v=state.currentEntry;if(!v)return toast('Aucun véhicule à mettre de côté.');
+  setHoldingGate(true);beep(760,.08);
+  v.status='holding';v.holdingAt=state.simTime;state.holdingVehicles.push(v.id);
+  logEvent(`${v.plate} placé dans la zone d’attente secondaire.`,'warn');
+  state.currentEntry=null;refreshCurrentEntry();renderAll();setTimeout(()=>setHoldingGate(false),900)
+}
+function releaseHoldingVehicle(id=null){
+  const vehicleId=id??state.holdingVehicles[0];
+  const v=state.vehicles.find(x=>x.id===vehicleId);if(!v)return toast('Aucun véhicule dans la zone d’attente.');
+  const slot=availableSpace(v);if(!slot)return toast('Toujours aucune place compatible disponible.');
+  state.holdingVehicles=state.holdingVehicles.filter(x=>x!==v.id);
+  setHoldingGate(true);beep(820,.08);
+  v.entryAt=v.entryAt||state.simTime;v.parkedAt=state.simTime;v.floor=slot.floor.name;v.spaceId=slot.space.id;v.status='driving-to-space';v.inTransit=true;
+  slot.space.status='occupied';slot.space.vehicleId=v.id;state.selectedFloor=state.floors.indexOf(slot.floor);
+  state.stats.entries++;state.trafficByHour[simNow().getHours()]++;
+  logEvent(`${v.plate} quitte la zone d’attente et rejoint ${v.spaceId}.`,'good');renderAll();
+  setTimeout(()=>animateVehicleJourney(v,'to-space'),30);setTimeout(()=>{v.status='parked';v.inTransit=false;renderAll()},2750);setTimeout(()=>setHoldingGate(false),900)
+}
+function renderHoldingArea(){
+  const ids=state.holdingVehicles||[],list=document.getElementById('holdingList'),count=document.getElementById('holdingCount');
+  if(count)count.textContent=`${ids.length} véhicule${ids.length>1?'s':''}`;
+  if(list){list.innerHTML=ids.length?'':'<span style="color:var(--muted);font-size:11px">Zone libre</span>';ids.forEach(id=>{const v=state.vehicles.find(x=>x.id===id);if(v)list.insertAdjacentHTML('beforeend',`<div class="holding-item"><span><strong>${escapeHTML(v.plate)}</strong><br>${v.type==='bus'?'Bus':'Voiture'}</span><button class="small success" onclick="releaseHoldingVehicle(${v.id})">Réintégrer</button></div>`)})}
+  const b=document.getElementById('releaseHoldingBtn');if(b)b.disabled=!ids.length;setHoldingGate(state.holdingGateOpen)
 }
 requestExit=function(v){
   if(!v||v.status!=='parked')return;
@@ -1841,7 +1888,7 @@ document.addEventListener('keydown',e=>{
 setInterval(advancedSimulation,1000);
 
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
-document.getElementById('openEntryBtn').onclick=openEntry;document.getElementById('editPlateBtn').onclick=editPlate;document.getElementById('refuseEntryBtn').onclick=refuseEntry;document.getElementById('manualArrivalBtn').onclick=()=>addArrival();
+document.getElementById('openEntryBtn').onclick=openEntry;document.getElementById('holdEntryBtn').onclick=holdCurrentEntry;document.getElementById('editPlateBtn').onclick=editPlate;document.getElementById('refuseEntryBtn').onclick=refuseEntry;document.getElementById('manualArrivalBtn').onclick=()=>addArrival();
 document.getElementById('payExitBtn').onclick=openPayment;document.getElementById('openExitBtn').onclick=()=>openExit(false);document.getElementById('overrideExitBtn').onclick=()=>openExit(true);
 document.getElementById('speedSelect').onchange=e=>{state.speed=Number(e.target.value);toast(state.speed===0?'Simulation en pause':`Vitesse x${state.speed}`)};
 document.getElementById('cashReceivedInput').oninput=updateCashChange;document.getElementById('importSaveInput').onchange=e=>e.target.files[0]&&importSave(e.target.files[0]);
