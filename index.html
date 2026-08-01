@@ -204,6 +204,27 @@ main{padding:14px;min-width:0}
 @media(max-width:1250px){.cash-workspace{grid-template-columns:250px 1fr}.cash-sidebar{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 @media(max-width:800px){.cash-workspace{grid-template-columns:1fr}.cash-sidebar{grid-template-columns:1fr}.cash-filters{grid-template-columns:1fr}.payment-grid{grid-template-columns:repeat(2,1fr)}}
 
+
+/* --- DEUX VOIES DE SORTIE V6 --- */
+.exit-lanes{display:grid;gap:12px}
+.exit-lane{background:#0d171e;border:1px solid #304754;border-radius:14px;padding:11px}
+.exit-lane.closed{opacity:.58;border-color:#6c3434}
+.exit-lane-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}
+.exit-lane-head strong{font-size:13px}
+.exit-lane-status{font-size:10px;padding:4px 8px;border-radius:999px;background:#173d29;color:#8ef0ad}
+.exit-lane-status.closed{background:#4b2020;color:#ffabab}
+.lane-mini-grid{display:grid;grid-template-columns:1fr 150px;gap:9px;align-items:center}
+.lane2-camera{height:88px}
+.lane2-camera .vehicle-card{grid-template-columns:50px 1fr;padding:8px}
+.lane2-camera .vehicle-icon{height:36px}
+.lane2-traffic{grid-template-columns:32px 1fr;gap:8px}
+.lane2-traffic .light{width:30px;height:72px;padding:6px}
+.lane2-traffic .bulb{width:16px;height:16px}
+.lane2-traffic .gate-wrap{height:64px}
+.lane2-traffic .gate-post{height:42px}
+.lane2-traffic .gate-arm{width:130px;bottom:39px}
+@media(max-width:700px){.lane-mini-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -362,6 +383,34 @@ main{padding:14px;min-width:0}
           <button id="overrideExitBtn" class="warning">Dérogation</button>
         </div>
         <div class="queue-list" id="exitQueue"></div>
+
+        <div class="exit-lane" id="exitLane2Box">
+          <div class="exit-lane-head">
+            <strong>Voie de sortie 2</strong>
+            <span class="exit-lane-status closed" id="exitLane2Status">FERMÉE</span>
+          </div>
+          <div class="lane-mini-grid">
+            <div class="camera-feed lane2-camera">
+              <div class="vehicle-card">
+                <div class="vehicle-icon" id="exit2VehicleIcon"></div>
+                <div>
+                  <div class="plate" id="exit2Plate">—</div>
+                  <div class="confidence" id="exit2Info">Voie fermée</div>
+                </div>
+              </div>
+            </div>
+            <div class="traffic lane2-traffic">
+              <div class="light"><div class="bulb red on" id="exit2Red"></div><div class="bulb green" id="exit2Green"></div></div>
+              <div class="gate-wrap"><div class="gate-post"></div><div class="gate-arm" id="exit2Gate"></div></div>
+            </div>
+          </div>
+          <div class="control-row" style="margin-top:9px">
+            <button id="toggleExitLane2Btn" class="success" onclick="toggleExitLane2()">Ouvrir la voie 2</button>
+            <button id="payExit2Btn" onclick="manualPayLane2()">Encaisser</button>
+            <button id="openExit2Btn" class="success" onclick="openExitLane(2,false)">Ouvrir la barrière</button>
+            <button id="overrideExit2Btn" class="warning" onclick="openExitLane(2,true)">Dérogation</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1929,7 +1978,177 @@ confirmCashClosure=function(){
   renderAll();return result
 }
 
-document.getElementById('payExitBtn').onclick=()=>{if(!state.register.open)return toast('Caisse fermée : paiement obligatoire à la borne automatique.');openPayment()};document.getElementById('openExitBtn').onclick=()=>openExit(false);document.getElementById('overrideExitBtn').onclick=()=>openExit(true);
+
+/* ================= DEUX SORTIES ET ENCAISSEMENT AUTOMATIQUE V6 ================= */
+function ensureExitLaneV6(){
+  if(state.exitLane2Open===undefined)state.exitLane2Open=false;
+  if(state.currentExit2===undefined)state.currentExit2=null;
+  if(state.autoPaymentJobs===undefined)state.autoPaymentJobs={};
+}
+
+const _v6EnsureAdvancedState=ensureAdvancedState;
+ensureAdvancedState=function(){
+  _v6EnsureAdvancedState();
+  ensureExitLaneV6();
+}
+
+refreshCurrentExit=function(){
+  ensureExitLaneV6();
+  if(!state.currentExit&&state.exitQueue.length)state.currentExit=state.exitQueue.shift();
+  if(state.exitLane2Open&&!state.currentExit2&&state.exitQueue.length)state.currentExit2=state.exitQueue.shift();
+  if(!state.exitLane2Open&&state.currentExit2){
+    state.exitQueue.unshift(state.currentExit2);
+    state.currentExit2=null;
+  }
+}
+
+function laneVehicle(lane){return lane===2?state.currentExit2:state.currentExit}
+function setLaneVehicle(lane,v){if(lane===2)state.currentExit2=v;else state.currentExit=v}
+function laneGatePrefix(lane){return lane===2?'exit2':'exit'}
+
+function setExitLaneGate(lane,open){
+  const prefix=laneGatePrefix(lane);
+  document.getElementById(prefix+'Gate')?.classList.toggle('open',open);
+  document.getElementById(prefix+'Red')?.classList.toggle('on',!open);
+  document.getElementById(prefix+'Green')?.classList.toggle('on',open);
+  if(lane===1){
+    document.getElementById('cashExitGate')?.classList.toggle('open',open);
+    document.getElementById('cashExitRed')?.classList.toggle('on',!open);
+    document.getElementById('cashExitGreen')?.classList.toggle('on',open);
+  }
+}
+
+function finalizeLaneExit(lane,override=false){
+  const v=laneVehicle(lane);if(!v)return;
+  setExitLaneGate(lane,true);beep(880,.08);
+  v.status='exited';state.stats.exits++;if(durationMinutes(v)>10)state.stats.overstays++;
+  freeSpaceOf(v);
+  logEvent(override?`Dérogation de sortie voie ${lane} pour ${v.plate}.`:`${v.plate} est sorti par la voie ${lane}.`,override?'warn':'good');
+  if(override)state.stats.satisfaction=Math.max(0,state.stats.satisfaction-2);
+  setTimeout(()=>setExitLaneGate(lane,false),900);
+  delete state.autoPaymentJobs[v.id];
+  setLaneVehicle(lane,null);refreshCurrentExit();renderAll();
+}
+
+function openExitLane(lane,override=false){
+  ensureExitLaneV6();
+  if(lane===2&&!state.exitLane2Open)return toast('La voie 2 est fermée.');
+  const v=laneVehicle(lane);if(!v)return toast(`Aucun véhicule sur la voie ${lane}.`);
+  if(state.equipment.exitGate<=0)return toast('Barrière de sortie hors service.');
+  const due=amountDue(v);
+  if(due>0&&!override)return toast('Paiement requis.');
+  if(override&&!confirm('Autoriser la sortie sans paiement validé ?'))return;
+  finalizeLaneExit(lane,override)
+}
+
+openExit=function(override=false){openExitLane(1,override)}
+
+function randomAutomaticMethod(){
+  const methods=['CB','CONTACTLESS','MOBILE','CASH'];
+  return methods[Math.floor(Math.random()*methods.length)]
+}
+
+function autoChargeLane(lane){
+  ensureExitLaneV6();
+  if(!state.autoExitMode)return;
+  const v=laneVehicle(lane);if(!v)return;
+  if(state.autoPaymentJobs[v.id])return;
+  state.autoPaymentJobs[v.id]=true;
+  const delay=500+Math.floor(Math.random()*1200);
+  setTimeout(()=>{
+    if(!state.autoExitMode||laneVehicle(lane)?.id!==v.id){delete state.autoPaymentJobs[v.id];return}
+    const amount=amountDue(v),method=randomAutomaticMethod();
+    if(amount>0){
+      v.paid=true;v.totalPaid=Number(v.totalPaid||0)+amount;v.paidAmount=Number(v.paidAmount||0)+amount;v.paidAt=state.simTime;v.paymentMethod=method;
+      state.revenue+=amount;state.budget+=amount;
+      const tx={id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),receiptNo:state.receiptCounter++,date:simNow().toLocaleDateString('fr-FR'),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method,amount,agent:'Encaissement automatique',status:'VALIDÉ',sessionId:null};
+      state.transactions.push(tx);
+      logEvent(`${v.plate} : ${euro.format(amount)} encaissés automatiquement par ${method} sur la voie ${lane}.`,'good');
+    }else{
+      v.paid=true;v.paidAt=state.simTime;v.paymentMethod='GRATUITÉ';
+      logEvent(`${v.plate} : sortie gratuite validée automatiquement sur la voie ${lane}.`,'good');
+    }
+    renderAll();
+    setTimeout(()=>{if(state.autoExitMode&&laneVehicle(lane)?.id===v.id)finalizeLaneExit(lane,false)},450)
+  },delay)
+}
+
+scheduleAutomaticExitCheck=function(){
+  ensureExitLaneV6();
+  if(!state.autoExitMode)return;
+  autoChargeLane(1);
+  if(state.exitLane2Open)autoChargeLane(2);
+}
+
+automaticExitAuthorized=function(v){return !!(state.autoExitMode&&v)}
+automaticPaymentActive=function(){return !!state.autoExitMode}
+
+function toggleExitLane2(){
+  ensureExitLaneV6();
+  state.exitLane2Open=!state.exitLane2Open;
+  if(!state.exitLane2Open&&state.currentExit2){state.exitQueue.unshift(state.currentExit2);state.currentExit2=null}
+  refreshCurrentExit();
+  logEvent(`Voie de sortie 2 ${state.exitLane2Open?'ouverte':'fermée'}.`,state.exitLane2Open?'good':'warn');
+  renderAll();saveGame(true)
+}
+
+function manualPayLane2(){
+  if(state.autoExitMode)return toast('Mode automatique actif : aucun encaissement manuel nécessaire.');
+  const v=state.currentExit2;if(!v)return toast('Aucun véhicule sur la voie 2.');
+  if(!state.register.open)return toast('La caisse est fermée.');
+  const amount=amountDue(v),method=prompt('Moyen de paiement : CB, CONTACTLESS ou CASH','CB');
+  if(!method)return;
+  v.paid=true;v.totalPaid=Number(v.totalPaid||0)+amount;v.paidAmount=Number(v.paidAmount||0)+amount;v.paidAt=state.simTime;v.paymentMethod=method.toUpperCase();
+  state.revenue+=amount;state.budget+=amount;
+  state.transactions.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),receiptNo:state.receiptCounter++,date:simNow().toLocaleDateString('fr-FR'),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:v.paymentMethod,amount,agent:state.register.agent||'Superviseur',status:'VALIDÉ',sessionId:state.register.sessionId||null});
+  logEvent(`${v.plate} encaissé manuellement sur la voie 2 : ${euro.format(amount)}.`,'good');renderAll()
+}
+
+const _v6RenderExit=renderExit;
+renderExit=function(){
+  ensureExitLaneV6();refreshCurrentExit();_v6RenderExit();
+  const v2=state.currentExit2,open=state.exitLane2Open;
+  document.getElementById('exitLane2Box')?.classList.toggle('closed',!open);
+  const st=document.getElementById('exitLane2Status');if(st){st.textContent=open?'OUVERTE':'FERMÉE';st.className='exit-lane-status'+(open?'':' closed')}
+  const tb=document.getElementById('toggleExitLane2Btn');if(tb){tb.textContent=open?'Fermer la voie 2':'Ouvrir la voie 2';tb.className=open?'danger':'success'}
+  document.getElementById('exit2Plate').textContent=v2?v2.plate:'—';
+  document.getElementById('exit2Info').textContent=!open?'Voie fermée':v2?`${Math.floor(durationMinutes(v2))} min • ${amountDue(v2)<=.001?'payé':'à payer'}`:'Voie libre';
+  document.getElementById('exit2VehicleIcon').className='vehicle-icon'+(v2?.type==='bus'?' bus':'');
+  ['payExit2Btn','openExit2Btn','overrideExit2Btn'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=!open||!v2||state.autoExitMode});
+  const pay1=document.getElementById('payExitBtn'),open1=document.getElementById('openExitBtn'),over1=document.getElementById('overrideExitBtn');
+  if(pay1)pay1.disabled=!state.currentExit||state.autoExitMode;
+  if(open1)open1.disabled=!state.currentExit||state.autoExitMode||amountDue(state.currentExit)>.001;
+  if(over1)over1.disabled=!state.currentExit||state.autoExitMode;
+  document.getElementById('exitQueueCount').textContent=`${state.exitQueue.length} en attente • ${open?2:1} voie(s) active(s)`;
+}
+
+const _v6RenderAutomaticExitControls=renderAutomaticExitControls;
+renderAutomaticExitControls=function(){
+  _v6RenderAutomaticExitControls();
+  const enabled=!!state.autoExitMode;
+  const msg=document.getElementById('autoExitMessage');
+  if(msg)msg.textContent=enabled?'Encaissement aléatoire et ouverture entièrement automatiques sur les voies ouvertes.':'Encaissement et ouverture entièrement manuels.';
+  const btn=document.getElementById('toggleAutoExitBtn');if(btn)btn.textContent=enabled?'Passer en mode manuel':'Activer paiement + sortie automatiques';
+  const pay=document.getElementById('payExitBtn');if(pay){pay.textContent=enabled?'Encaissement automatique':'Encaisser';pay.disabled=enabled||!state.currentExit}
+}
+
+const _v6ToggleAutoExitMode=toggleAutoExitMode;
+toggleAutoExitMode=function(){
+  ensureExitLaneV6();
+  state.autoExitMode=!state.autoExitMode;state.autoPaymentJobs={};state.autoExitPending=false;state.lastAutoExitVehicleId=null;
+  logEvent(state.autoExitMode?'Mode automatique activé : paiements et sorties sont gérés sans intervention.':'Mode manuel activé : vous gérez les encaissements et les barrières.',state.autoExitMode?'good':'warn');
+  toast(state.autoExitMode?'Paiement et sortie automatiques activés.':'Mode manuel activé.');
+  renderAll();saveGame(true)
+}
+
+const _v6RenderCash=renderCash;
+renderCash=function(){
+  _v6RenderCash();
+  const buttons=document.querySelectorAll('.payment-grid button');buttons.forEach(b=>b.disabled=!!state.autoExitMode);
+  const note=document.getElementById('cashVehicleStatus');if(note&&state.autoExitMode)note.textContent='Mode automatique : les clients paient sans intervention du superviseur.';
+}
+
+document.getElementById('payExitBtn').onclick=()=>{if(state.autoExitMode)return toast('Encaissement automatique actif.');if(!state.register.open)return toast('Ouvrez la caisse pour encaisser manuellement.');openPayment()};document.getElementById('openExitBtn').onclick=()=>openExitLane(1,false);document.getElementById('overrideExitBtn').onclick=()=>openExitLane(1,true);
 document.getElementById('speedSelect').onchange=e=>{state.speed=Number(e.target.value);toast(state.speed===0?'Simulation en pause':`Vitesse x${state.speed}`)};
 document.getElementById('cashReceivedInput').oninput=updateCashChange;document.getElementById('importSaveInput').onchange=e=>e.target.files[0]&&importSave(e.target.files[0]);
 setInterval(()=>{advanceTime();simulateTraffic();renderAll()},1000);setInterval(()=>saveGame(true),30000);
