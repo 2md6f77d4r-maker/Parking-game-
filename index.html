@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Parking Manager Pro V3</title>
+<title>Parking Manager Pro V5</title>
 <style>
 :root{
   --bg:#0d151c;--panel:#17232d;--panel2:#1d2c37;--line:#314553;
@@ -500,6 +500,10 @@ main{padding:14px;min-width:0}
             <div class="cash-line"><span>Borne</span><span id="sumKiosk">0,00 €</span></div>
             <div class="cash-line"><span>Remboursements</span><span id="sumRefunds">0,00 €</span></div>
             <div class="cash-line cash-total"><span>Total session</span><span id="sumSession">0,00 €</span></div>
+            <div class="section" style="margin-top:10px">
+              <div class="cash-line"><span>Mode de paiement</span><strong id="automaticPaymentStatus">BORNE AUTOMATIQUE</strong></div>
+              <div class="auto-exit-note" id="automaticPaymentNote">Caisse fermée : les usagers règlent à la borne et la barrière s’ouvre automatiquement après reconnaissance.</div>
+            </div>
           </div>
 
           <div class="section">
@@ -684,7 +688,7 @@ main{padding:14px;min-width:0}
       <button class="secondary" onclick="showKeyboardHelp()">Raccourcis clavier</button>
       <div class="section">
         <div class="cash-line"><span>Sauvegarde automatique</span><span>Toutes les 30 secondes</span></div>
-        <div class="cash-line"><span>Version</span><span>2.0</span></div>
+        <div class="cash-line"><span>Version</span><span>5.0 — Paiement automatique</span></div>
       </div>
     </div>
   </section>
@@ -1431,7 +1435,7 @@ function confirmKioskPayment(method){
   state.revenue+=amount;state.budget+=amount;state.kioskPayments++;
   state.transactions.push({id:String(Date.now()+Math.random()),time:simNow().toLocaleTimeString('fr-FR'),plate:v.plate,duration:durationMinutes(v),method:'KIOSK',amount,status:'VALIDÉ',detail:method,agent:'Borne automatique'});
   const step=document.getElementById('kioskStep');step.textContent='3/3 TERMINÉ';document.getElementById('kioskMethods').style.display='none';
-  document.getElementById('kioskResult').innerHTML=`<span class="status-pill good">PAIEMENT ACCEPTÉ</span><div class="kiosk-ticket"><strong>TICKET N° ${String(v.receiptNo).padStart(6,'0')}</strong><br>Plaque : ${escapeHTML(v.plate)}<br>Moyen : ${method}<br>Montant : ${euro.format(amount)}<br>Payé à : ${simNow().toLocaleTimeString('fr-FR')}<br>Sortie autorisée ${state.graceMinutes} min</div><button class="small secondary" onclick="printKioskReceipt(${v.id})">Imprimer le reçu</button>`;
+  document.getElementById('kioskResult').innerHTML=`<span class="status-pill good">PAIEMENT ACCEPTÉ</span><div class="kiosk-ticket"><strong>TICKET N° ${String(v.receiptNo).padStart(6,'0')}</strong><br>Plaque : ${escapeHTML(v.plate)}<br>Moyen : ${method}<br>Montant : ${euro.format(amount)}<br>Payé à : ${simNow().toLocaleTimeString('fr-FR')}<br>Sortie autorisée ${state.graceMinutes} min<br><strong>La barrière s’ouvrira automatiquement à la reconnaissance de la plaque.</strong></div><button class="small secondary" onclick="printKioskReceipt(${v.id})">Imprimer le reçu</button>`;
   logEvent(`${v.plate} a payé ${euro.format(amount)} à la borne automatique (${method}).`,'good');toast('Paiement borne accepté.');renderAll();scheduleAutomaticExitCheck();
 }
 function kioskLostTicket(){
@@ -1460,7 +1464,7 @@ function renderExitPriceScreen(){
   document.getElementById('exitScreenPlate').textContent=v.plate;
   document.getElementById('exitScreenDuration').textContent=`Durée : ${Math.floor(durationMinutes(v))} min`;
   document.getElementById('exitScreenAmount').textContent=paid?'PAYÉ':euro.format(due);
-  document.getElementById('exitScreenMessage').textContent=paid?((state.autoExitMode||(!state.register.open&&v.paymentMethod==='KIOSK'))?'Paiement validé — ouverture automatique':'Paiement validé — attendez l’ouverture de la barrière'):`Montant à payer : ${euro.format(due)} — utilisez la borne automatique ou la caisse`;
+  document.getElementById('exitScreenMessage').textContent=paid?(automaticExitAuthorized(v)?'Paiement validé — ouverture automatique':'Paiement validé — attendez l’ouverture de la barrière'):`Montant à payer : ${euro.format(due)} — utilisez la borne automatique ou la caisse`;
 }
 
 function simulateKioskCustomer(){const v=occupiedVehicles().find(x=>!x.paid)||occupiedVehicles()[0];if(!v)return toast('Aucun client disponible.');document.getElementById('kioskPlate').value=v.plate;kioskLookup()}
@@ -1500,6 +1504,23 @@ function renderAdvanced(){
   scheduleAutomaticExitCheck();
   renderPedestrians()
 }
+function automaticExitAuthorized(v){
+  if(!v||amountDue(v)>.001)return false;
+  return !!(state.autoExitMode||v.paymentMethod==='KIOSK'||v.kioskValidated);
+}
+function automaticPaymentActive(){return !state.register.open}
+function updateAutomaticPaymentMode(){
+  const active=automaticPaymentActive();
+  const payBtn=document.getElementById('payExitBtn');
+  const status=document.getElementById('automaticPaymentStatus'),note=document.getElementById('automaticPaymentNote');
+  if(status){status.textContent=active?'BORNE AUTOMATIQUE':'CAISSE OUVERTE';status.style.color=active?'var(--mint)':'var(--green)'}
+  if(note)note.textContent=active?'Caisse fermée : paiement obligatoire à la borne, puis ouverture automatique à la reconnaissance.':'Caisse ouverte : paiement possible au guichet. Les paiements déjà effectués à la borne restent en ouverture automatique.';
+  if(payBtn){
+    payBtn.textContent=active?'Paiement à la borne obligatoire':'Encaisser à la caisse';
+    payBtn.className=active?'secondary':'';
+    payBtn.disabled=active||!state.currentExit;
+  }
+}
 function toggleAutoExitMode(){
   ensureAdvancedState();
   state.autoExitMode=!state.autoExitMode;
@@ -1515,27 +1536,27 @@ function renderAutomaticExitControls(){
   if(pill){pill.textContent=enabled?'AUTOMATIQUE':'MANUEL';pill.className=`auto-mode-pill ${enabled?'on':''}`}
   if(btn){btn.textContent=enabled?'Repasser en mode manuel':'Activer le mode automatique';btn.className=enabled?'warning':'secondary'}
   if(msg){
-    if(!enabled)msg.textContent='Ouverture uniquement sur commande de l’opérateur.';
-    else if(!v)msg.textContent=state.register.open?'En attente d’un véhicule payé.':'Caisse fermée : les paiements borne ouvrent automatiquement la sortie.';
+    if(!enabled)msg.textContent=automaticPaymentActive()?'Caisse fermée : paiement à la borne et ouverture automatique.':'Caisse ouverte : ouverture manuelle, sauf paiement déjà validé à la borne.';
+    else if(!v)msg.textContent=automaticPaymentActive()?'Caisse fermée : borne automatique active.':'En attente d’un véhicule payé.';
     else if(due<=.001)msg.textContent=`${v.plate} reconnu : ouverture automatique imminente.`;
     else msg.textContent=`${v.plate} : paiement de ${euro.format(due)} requis.`
   }
   if(setting){setting.textContent=enabled?'ACTIVÉE':'DÉSACTIVÉE';setting.className=`status-pill ${enabled?'good':'warn'}`}
+  updateAutomaticPaymentMode();
 }
 function scheduleAutomaticExitCheck(){
   if(state.autoExitPending||!state.currentExit)return;
   const v=state.currentExit;
-  const automaticAllowed=state.autoExitMode||(!state.register.open&&v.paymentMethod==='KIOSK');
-  if(!automaticAllowed||amountDue(v)>.001)return;
+  if(!automaticExitAuthorized(v))return;
   if(state.lastAutoExitVehicleId===v.id)return;
   state.autoExitPending=true;state.lastAutoExitVehicleId=v.id;
-  logEvent(`${v.plate} reconnu à la sortie avec paiement validé${v.paymentMethod==='KIOSK'?' à la borne':''}. Ouverture automatique.`, 'good');
+  logEvent(`${v.plate} reconnu à la sortie avec paiement validé${v.paymentMethod==='KIOSK'?' à la borne automatique':''}. Ouverture automatique.`, 'good');
   setTimeout(()=>{
     state.autoExitPending=false;
-    const stillAllowed=state.autoExitMode||(!state.register.open&&state.currentExit?.paymentMethod==='KIOSK');
-    if(stillAllowed&&state.currentExit?.id===v.id&&amountDue(v)<=.001)openExit(false);
+    if(state.currentExit?.id===v.id&&automaticExitAuthorized(state.currentExit))openExit(false);
   },650)
 }
+
 function renderWatch(type,id){const box=document.getElementById(id);if(!box)return;box.innerHTML=state[type].map(p=>`<span class="status-pill">${p} <button class="small danger" onclick="removeWatchPlate('${type}','${p}')">×</button></span>`).join(' ')}
 function setShift(id,value){const s=state.staff.find(x=>x.id===id);if(s)s.status=value==='Repos'?'Repos':value==='Pause'?'Pause':'En service';renderAll()}
 function renderPedestrians(){
@@ -1776,7 +1797,7 @@ function renderCash(){
   document.getElementById('cashSelectExitBtn').disabled=!exit;
   document.getElementById('cashOpenExitBtn').disabled=!exit||exitDue>0;
   document.getElementById('cashOverrideExitBtn').disabled=!exit;
-  const manualOpen=document.getElementById('openExitBtn');if(manualOpen)manualOpen.disabled=!exit||exitDue>0||state.autoExitMode
+  const manualOpen=document.getElementById('openExitBtn');if(manualOpen)manualOpen.disabled=!exit||exitDue>0||automaticExitAuthorized(exit);updateAutomaticPaymentMode()
 }
 function selectCurrentExitForCash(){if(!state.currentExit)return toast('Aucun véhicule à la sortie.');state.selectedCashVehicleId=state.currentExit.id;renderCash()}
 function openCashBarrier(override=false){if(!state.currentExit)return toast('Aucun véhicule à la sortie.');openExit(override)}
@@ -1849,7 +1870,7 @@ function renderHoldingArea(){
 requestExit=function(v){
   if(!v||v.status!=='parked')return;
   v.status='driving-to-exit';v.inTransit=true;v.exitRequestAt=state.simTime;state.selectedFloor=Math.max(0,state.floors.findIndex(f=>f.name===v.floor));
-  logEvent(`${v.plate} quitte ${v.spaceId} et rejoint la sortie.`);renderAll();setTimeout(()=>animateVehicleJourney(v,'to-exit'),30);
+  logEvent(`${v.plate} quitte ${v.spaceId} et rejoint la sortie.`);if(!state.register.open&&!v.paid)logEvent(`${v.plate} doit régler à la borne automatique avant la sortie.`,'warn');renderAll();setTimeout(()=>animateVehicleJourney(v,'to-exit'),30);
   setTimeout(()=>{v.status='waiting-exit';v.inTransit=false;state.exitQueue.push(v);refreshCurrentExit();if(!state.selectedCashVehicleId)state.selectedCashVehicleId=v.id;renderAll()},2750)
 }
 openExit=function(override=false){
@@ -1871,7 +1892,7 @@ payAtKiosk=function(id){
   if(!oldOpen)state.register.open=false;
   if(ok){
     state.kioskPayments++;v.kioskValidated=true;v.kioskValidatedAt=state.simTime;
-    document.getElementById('kioskResult').innerHTML=`<span class="status-pill good">PAIEMENT ACCEPTÉ</span><br><br>Plaque : <strong>${escapeHTML(v.plate)}</strong><br>Montant : <strong>${euro.format(amount)}</strong><br>Sortie autorisée pendant ${state.graceMinutes} minute(s).${state.autoExitMode?'<br><br>La barrière s’ouvrira automatiquement à la reconnaissance de la plaque.':'<br><br>Présentez-vous à la sortie ; l’opérateur ouvrira la barrière.'}`;
+    document.getElementById('kioskResult').innerHTML=`<span class="status-pill good">PAIEMENT ACCEPTÉ</span><br><br>Plaque : <strong>${escapeHTML(v.plate)}</strong><br>Montant : <strong>${euro.format(amount)}</strong><br>Sortie autorisée pendant ${state.graceMinutes} minute(s).<br><br>La barrière s’ouvrira automatiquement à la reconnaissance de la plaque.`;
     logEvent(`${v.plate} : paiement borne validé, autorisation de sortie enregistrée.`,'good');
     renderAll();scheduleAutomaticExitCheck()
   }
@@ -1889,7 +1910,26 @@ setInterval(advancedSimulation,1000);
 
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 document.getElementById('openEntryBtn').onclick=openEntry;document.getElementById('holdEntryBtn').onclick=holdCurrentEntry;document.getElementById('editPlateBtn').onclick=editPlate;document.getElementById('refuseEntryBtn').onclick=refuseEntry;document.getElementById('manualArrivalBtn').onclick=()=>addArrival();
-document.getElementById('payExitBtn').onclick=openPayment;document.getElementById('openExitBtn').onclick=()=>openExit(false);document.getElementById('overrideExitBtn').onclick=()=>openExit(true);
+
+// --- MODE DE PAIEMENT AUTOMATIQUE CENTRALISÉ V5 ---
+const _v5OpenCashRegister=openCashRegister;
+openCashRegister=function(){
+  const wasOpen=state.register.open;
+  const result=_v5OpenCashRegister();
+  if(!wasOpen&&state.register.open)logEvent('Caisse ouverte : encaissement au guichet disponible. La borne reste utilisable.','good');
+  renderAll();return result
+}
+const _v5ConfirmCashClosure=confirmCashClosure;
+confirmCashClosure=function(){
+  const result=_v5ConfirmCashClosure();
+  if(!state.register.open){
+    logEvent('Caisse fermée : mode borne automatique activé. Après paiement, la sortie s’ouvre automatiquement.','good');
+    scheduleAutomaticExitCheck();
+  }
+  renderAll();return result
+}
+
+document.getElementById('payExitBtn').onclick=()=>{if(!state.register.open)return toast('Caisse fermée : paiement obligatoire à la borne automatique.');openPayment()};document.getElementById('openExitBtn').onclick=()=>openExit(false);document.getElementById('overrideExitBtn').onclick=()=>openExit(true);
 document.getElementById('speedSelect').onchange=e=>{state.speed=Number(e.target.value);toast(state.speed===0?'Simulation en pause':`Vitesse x${state.speed}`)};
 document.getElementById('cashReceivedInput').oninput=updateCashChange;document.getElementById('importSaveInput').onchange=e=>e.target.files[0]&&importSave(e.target.files[0]);
 setInterval(()=>{advanceTime();simulateTraffic();renderAll()},1000);setInterval(()=>saveGame(true),30000);
